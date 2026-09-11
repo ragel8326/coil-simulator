@@ -1,0 +1,1536 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="자성재료 Project 1 — 두 공심 코일의 축 방향 자기장을 권선 한 턴 단위로 합산해 25→10 Oe 선형 구배를 설계·최적화하고 실측과 비교하는 도구.">
+<style>*{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>구배 코일 설계 벤치</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Spectral:wght@500;600&display=swap">
+
+<style>
+:root{
+  --ground:#FBFAF7; --surface:#FFFFFF; --sunk:#F4F1EB;
+  --line:#E4DED4; --line-soft:#EFEAE1;
+  --ink:#1B1A18; --ink-2:#4A443C; --muted:#736C62;
+  --accent:#B05A2A; --accent-soft:#F2E5DA;
+  --s-model:#1F5FA8; --s-meas:#B05A2A; --s-thin:#118C7A;
+  --good:#2E6B34; --warn:#9A6512; --bad:#A8342A;
+  --good-bg:#E7F0E6; --warn-bg:#F6ECD9; --bad-bg:#F7E4E1;
+  --band:#1F5FA81F;
+  --r:6px;
+  --mono:"IBM Plex Mono","SFMono-Regular",Menlo,monospace;
+  --sans:"IBM Plex Sans KR","IBM Plex Sans",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --serif:"Spectral","Apple SD Gothic Neo",Georgia,serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#15161A; --surface:#1D1F24; --sunk:#25282E;
+    --line:#31353D; --line-soft:#272A31;
+    --ink:#ECEAE5; --ink-2:#C3BEB6; --muted:#948E85;
+    --accent:#D08A55; --accent-soft:#3A2A1E;
+    --s-model:#4B8FD6; --s-meas:#C87340; --s-thin:#1FA891;
+    --good:#7FC08A; --warn:#DDAE5E; --bad:#E08A80;
+    --good-bg:#1E2A20; --warn-bg:#2E2619; --bad-bg:#2E1D1B;
+    --band:#4B8FD629;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#15161A; --surface:#1D1F24; --sunk:#25282E;
+  --line:#31353D; --line-soft:#272A31;
+  --ink:#ECEAE5; --ink-2:#C3BEB6; --muted:#948E85;
+  --accent:#D08A55; --accent-soft:#3A2A1E;
+  --s-model:#4B8FD6; --s-meas:#C87340; --s-thin:#1FA891;
+  --good:#7FC08A; --warn:#DDAE5E; --bad:#E08A80;
+  --good-bg:#1E2A20; --warn-bg:#2E2619; --bad-bg:#2E1D1B;
+  --band:#4B8FD629;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.55;
+  margin:0; padding-block:28px 48px; padding-left:20px; padding-right:20px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1320px;margin:0 auto}
+
+/* ---------- header ---------- */
+header.top{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;
+  border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 6px}
+h1{font-family:var(--serif);font-weight:600;font-size:clamp(25px,3.4vw,34px);margin:0;letter-spacing:-.015em;
+  text-wrap:balance}
+.lede{color:var(--muted);margin:8px 0 0;max-width:62ch;font-size:13.5px}
+.themebtn{font-family:var(--mono);font-size:11px;letter-spacing:.06em;background:var(--surface);
+  color:var(--ink-2);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;cursor:pointer}
+.themebtn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- layout ---------- */
+.layout{display:grid;grid-template-columns:minmax(300px,330px) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:1000px){.layout{grid-template-columns:1fr}}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.panel > h2{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin:0;padding:12px 14px;border-bottom:1px solid var(--line-soft);font-weight:500}
+.panel-body{padding:14px}
+
+/* ---------- rail ---------- */
+.rail{display:flex;flex-direction:column;gap:14px;position:sticky;top:16px}
+@media (max-width:1000px){.rail{position:static}}
+.grp{border-top:1px solid var(--line-soft);padding-top:12px;margin-top:12px}
+.grp:first-child{border-top:0;padding-top:0;margin-top:0}
+.grp-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.grp-h b{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.swatch{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:1px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f.full{grid-column:1/-1}
+.f label{font-size:11px;color:var(--muted);letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+input[type=number],input[type=text],select,textarea{
+  font-family:var(--mono);font-size:13px;background:var(--sunk);color:var(--ink);
+  border:1px solid var(--line);border-radius:4px;padding:6px 8px;width:100%;
+  font-variant-numeric:tabular-nums}
+textarea{font-size:12px;line-height:1.5;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px}
+select{cursor:pointer}
+.seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{flex:1;font-family:var(--mono);font-size:11.5px;padding:6px 4px;background:var(--sunk);
+  color:var(--muted);border:0;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff}
+.derived{margin-top:9px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-variant-numeric:tabular-nums}
+.derived span b{color:var(--ink-2);font-weight:500}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:0;flex-wrap:wrap}
+.tabs button{font-family:var(--sans);font-size:13px;font-weight:500;background:none;border:0;
+  color:var(--muted);padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--ink-2)}
+
+/* ---------- chart ---------- */
+.chartbox{position:relative;padding:14px 14px 4px}
+svg.chart{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--mono);font-size:10px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.chart .axis-title{font-size:10.5px;fill:var(--ink-2)}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);
+  border-radius:4px;padding:7px 9px;font-family:var(--mono);font-size:11.5px;color:var(--ink);
+  box-shadow:0 6px 18px rgba(0,0,0,.13);white-space:nowrap;opacity:0;transition:opacity .1s;z-index:5;
+  font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 16px 14px;font-size:11.5px;color:var(--ink-2)}
+.legend i{width:16px;height:0;border-top-width:2.5px;display:inline-block;margin-right:6px;vertical-align:4px}
+
+/* ---------- metrics ---------- */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  border-top:1px solid var(--line-soft)}
+.metric{padding:11px 14px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.metric .k{font-size:10.5px;color:var(--muted);letter-spacing:.02em;margin-bottom:3px}
+.metric .v{font-family:var(--mono);font-size:17px;font-weight:500;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.metric .v small{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
+.metric.hi .v{color:var(--accent)}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px;padding:12px 14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 9px;border-radius:99px;
+  border:1px solid transparent;font-family:var(--mono)}
+.chip.ok{background:var(--good-bg);color:var(--good)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip b{font-weight:600}
+
+/* ---------- generic ---------- */
+button.act{font-family:var(--sans);font-size:12.5px;font-weight:500;background:var(--accent);color:#fff;
+  border:0;border-radius:4px;padding:8px 14px;cursor:pointer}
+button.act:hover{filter:brightness(1.07)}
+button.act[disabled]{opacity:.45;cursor:default}
+button.ghost{background:var(--surface);color:var(--ink-2);border:1px solid var(--line)}
+button.ghost:hover{border-color:var(--accent);color:var(--accent);filter:none}
+.row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+table.t{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;
+  font-variant-numeric:tabular-nums}
+table.t th{text-align:right;font-weight:500;color:var(--muted);font-size:10.5px;letter-spacing:.04em;
+  text-transform:uppercase;padding:7px 9px;border-bottom:1px solid var(--line)}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{padding:6px 9px;border-bottom:1px solid var(--line-soft)}
+.scroll{overflow-x:auto}
+.note{font-size:12px;color:var(--muted);line-height:1.6}
+.note code{font-family:var(--mono);background:var(--sunk);padding:1px 4px;border-radius:3px;font-size:11.5px}
+.bar{height:4px;background:var(--sunk);border-radius:2px;overflow:hidden;flex:1;min-width:100px}
+.bar>i{display:block;height:100%;background:var(--accent);width:0%;transition:width .12s}
+h3.sec{font-size:13px;font-weight:600;margin:0 0 4px}
+p.secnote{font-size:12px;color:var(--muted);margin:0 0 12px;max-width:70ch}
+.optgrid{width:100%;border-collapse:collapse;font-size:12px}
+.optgrid th{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;
+  font-weight:500;padding:5px 6px;text-align:left;border-bottom:1px solid var(--line)}
+.optgrid td{padding:4px 6px;border-bottom:1px solid var(--line-soft)}
+.optgrid input[type=number]{padding:4px 6px;font-size:12px}
+.optgrid td:first-child{white-space:nowrap;font-size:12px}
+footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <p class="eyebrow">자성재료 · Project 1</p>
+    <h1>구배 코일 설계 벤치</h1>
+    <p class="lede">두 공심 코일의 축 방향 자기장을 권선 한 턴 단위로 합산해서, 25 Oe → 10 Oe 선형 구배를 설계·최적화하고 실측과 비교합니다. 전류 1 A 기준.</p>
+  </div>
+  <button class="themebtn" id="themebtn" type="button">테마 전환</button>
+</header>
+
+<div class="layout">
+
+  <!-- ============ 좌측 파라미터 레일 ============ -->
+  <aside class="rail">
+    <section class="panel">
+      <h2>설계 파라미터</h2>
+      <div class="panel-body">
+
+        <div class="grp">
+          <div class="grp-h"><b>공통</b></div>
+          <div class="fields">
+            <div class="f"><label for="cur">전류 I (A)</label>
+              <input type="number" id="cur" value="1" step="0.05" min="0.01"></div>
+            <div class="f"><label for="dw">선경 (mm)</label>
+              <select id="dw"><option value="0.3">0.3</option><option value="0.4">0.4</option>
+              <option value="0.5" selected>0.5</option><option value="0.6">0.6</option><option value="0.8">0.8</option></select></div>
+            <div class="f"><label for="dist">코일 중심간 거리 d (mm)</label>
+              <input type="number" id="dist" value="56.5" step="0.5"></div>
+            <div class="f"><label for="pmax">발열 상한 (W)</label>
+              <input type="number" id="pmax" value="5" step="0.5" min="0.1"></div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><b><span class="swatch" style="background:var(--s-model)"></span>코일 1 (강)</b></div>
+          <div class="fields">
+            <div class="f"><label for="R1">평균 반경 (mm)</label><input type="number" id="R1" value="43.8" step="0.1"></div>
+            <div class="f"><label for="m1">층당 턴 수</label><input type="number" id="m1" value="19" step="1" min="1"></div>
+            <div class="f"><label for="n1">층 수</label><input type="number" id="n1" value="11" step="1" min="1"></div>
+            <div class="f"><label for="l1">마지막 층 턴 수</label><input type="number" id="l1" value="15" step="1" min="1"></div>
+            <div class="f full"><label>감는 방향</label>
+              <div class="seg" id="dir1"><button type="button" data-v="1" aria-pressed="true">정방향 +</button><button type="button" data-v="-1" aria-pressed="false">역방향 −</button></div></div>
+          </div>
+          <div class="derived" id="dv1"></div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><b><span class="swatch" style="background:var(--s-thin)"></span>코일 2 (약)</b></div>
+          <div class="fields">
+            <div class="f"><label for="R2">평균 반경 (mm)</label><input type="number" id="R2" value="20" step="0.1"></div>
+            <div class="f"><label for="m2">층당 턴 수</label><input type="number" id="m2" value="15" step="1" min="1"></div>
+            <div class="f"><label for="n2">층 수</label><input type="number" id="n2" value="1" step="1" min="1"></div>
+            <div class="f"><label for="l2">마지막 층 턴 수</label><input type="number" id="l2" value="15" step="1" min="1"></div>
+            <div class="f full"><label>감는 방향</label>
+              <div class="seg" id="dir2"><button type="button" data-v="1" aria-pressed="false">정방향 +</button><button type="button" data-v="-1" aria-pressed="true">역방향 −</button></div></div>
+          </div>
+          <div class="derived" id="dv2"></div>
+        </div>
+
+        <div class="grp">
+          <div class="grp-h"><b>측정창 &amp; 목표 직선</b></div>
+          <div class="fields">
+            <div class="f"><label for="xa">시작 x (mm)</label><input type="number" id="xa" value="14.2" step="0.1"></div>
+            <div class="f"><label for="xb">끝 x (mm)</label><input type="number" id="xb" value="39.2" step="0.1"></div>
+            <div class="f"><label for="h1">시작 목표 (Oe)</label><input type="number" id="h1" value="25" step="0.5"></div>
+            <div class="f"><label for="h2">끝 목표 (Oe)</label><input type="number" id="h2" value="10" step="0.5"></div>
+          </div>
+          <p class="note" style="margin:9px 0 0">x = 0 은 <b>코일 1 권선의 중심</b>, x = d 는 코일 2 권선의 중심입니다.</p>
+        </div>
+
+      </div>
+    </section>
+  </aside>
+
+  <!-- ============ 우측 메인 ============ -->
+  <main>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true"  data-tab="calc">계산</button>
+      <button role="tab" aria-selected="false" data-tab="opt">최적화</button>
+      <button role="tab" aria-selected="false" data-tab="sens">민감도 · 공차</button>
+      <button role="tab" aria-selected="false" data-tab="data">측정 데이터</button>
+    </div>
+
+    <!-- ---- 계산 탭 ---- -->
+    <section id="tab-calc">
+      <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
+        <div class="chartbox">
+          <svg class="chart" id="mainchart" viewBox="0 0 760 340" role="img" aria-label="거리에 따른 자기장 세기"></svg>
+          <div class="tip" id="tip"></div>
+        </div>
+        <div class="legend" id="legend"></div>
+        <div class="chips" id="chips"></div>
+        <div class="metrics" id="metrics"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>잔차 — 모델 − 목표 직선</h2>
+        <div class="chartbox">
+          <svg class="chart" id="residchart" viewBox="0 0 760 180" role="img" aria-label="측정창 안에서의 잔차"></svg>
+        </div>
+        <div class="panel-body" style="border-top:1px solid var(--line-soft)">
+          <p class="note" id="residnote"></p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>표시 옵션</h2>
+        <div class="panel-body row">
+          <label class="row" style="gap:6px"><input type="checkbox" id="showthin" checked> <span>얇은 코일 근사(Model 1) 겹쳐 보기</span></label>
+          <label class="row" style="gap:6px"><input type="checkbox" id="showparts"> <span>코일별 기여 분리</span></label>
+          <label class="row" style="gap:6px"><input type="checkbox" id="showmc"> <span>공차 밴드 (민감도 탭에서 계산)</span></label>
+          <label class="row" style="gap:6px"><input type="checkbox" id="showmeas" checked> <span>실측값 표시</span></label>
+          <button class="act ghost" type="button" id="copysum">설계 요약 복사</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- 최적화 탭 ---- -->
+    <section id="tab-opt" hidden>
+      <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
+        <div class="panel-body">
+          <h3 class="sec">차분진화(Differential Evolution) 최적화</h3>
+          <p class="secnote">체크한 변수만 범위 안에서 탐색합니다. 턴 수와 층 수는 정수로 반올림되고, 발열 상한과 최소 측정창 길이는 벌점으로 처리됩니다. 결과를 적용하면 왼쪽 파라미터가 덮어써집니다.</p>
+
+          <div class="scroll">
+            <table class="optgrid" id="optvars">
+              <thead><tr><th>변수</th><th>탐색</th><th>최소</th><th>최대</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:14px">
+            <div class="f"><label for="objsel">목적함수</label>
+              <select id="objsel">
+                <option value="max">최대 편차 (deviation)</option>
+                <option value="mse">평균제곱오차 (MSE)</option>
+              </select></div>
+            <div class="f"><label for="dir2sel">코일 2 방향</label>
+              <select id="dir2sel">
+                <option value="keep">현재 설정 유지</option>
+                <option value="auto" selected>자동 (양쪽 다 시도)</option>
+              </select></div>
+            <div class="f"><label for="minwin">최소 측정창 길이 (mm)</label>
+              <input type="number" id="minwin" value="20" step="1"></div>
+            <div class="f"><label for="gens">세대 수</label>
+              <input type="number" id="gens" value="150" step="10" min="20"></div>
+          </div>
+
+          <div class="row" style="margin-top:14px">
+            <button class="act" type="button" id="runopt">최적화 실행</button>
+            <button class="act ghost" type="button" id="applyopt" disabled>결과 적용</button>
+            <div class="bar"><i id="optbar"></i></div>
+          </div>
+          <pre id="optlog" style="font-family:var(--mono);font-size:12px;color:var(--ink-2);background:var(--sunk);
+            border:1px solid var(--line);border-radius:4px;padding:11px;margin:13px 0 0;white-space:pre-wrap;
+            min-height:64px">대기 중.</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- 민감도 탭 ---- -->
+    <section id="tab-sens" hidden>
+      <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
+        <div class="panel-body">
+          <h3 class="sec">민감도 분석 — 어떤 공차가 치명적인가</h3>
+          <p class="secnote">각 파라미터를 지정한 만큼 흔들었을 때 자기장이 얼마나 변하는지를 중심차분으로 계산합니다. 값이 큰 항목이 제작·측정에서 가장 조심해야 할 변수입니다.</p>
+          <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+            <div class="f"><label for="tR">반경 공차 ± (mm)</label><input type="number" id="tR" value="0.5" step="0.1"></div>
+            <div class="f"><label for="tN">턴 수 공차 ± (턴)</label><input type="number" id="tN" value="1" step="1"></div>
+            <div class="f"><label for="td">거리 공차 ± (mm)</label><input type="number" id="td" value="1" step="0.1"></div>
+            <div class="f"><label for="tI">전류 공차 ± (%)</label><input type="number" id="tI" value="1" step="0.1"></div>
+            <div class="f"><label for="tx">프로브 위치 공차 ± (mm)</label><input type="number" id="tx" value="0.5" step="0.1"></div>
+          </div>
+          <div class="scroll" style="margin-top:14px"><table class="t" id="senstable"></table></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>몬테카를로 공차 시뮬레이션</h2>
+        <div class="panel-body">
+          <p class="secnote">위 공차를 표준편차로 삼아 무작위 코일을 여러 개 만들고, 자기장 곡선이 퍼지는 범위를 구합니다. 실측이 이 밴드 안에 들어오면 편차는 제작 공차만으로 설명되고, 밖으로 나가면 다른 원인(지자기·발열·정렬)을 찾아야 합니다.</p>
+          <div class="row">
+            <div class="f" style="max-width:140px"><label for="mcn">시행 횟수</label>
+              <input type="number" id="mcn" value="400" step="100" min="50"></div>
+            <button class="act" type="button" id="runmc" style="align-self:flex-end">밴드 계산</button>
+            <div class="bar"><i id="mcbar"></i></div>
+          </div>
+          <p class="note" id="mcnote" style="margin-top:12px">아직 계산하지 않았습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- 데이터 탭 ---- -->
+    <section id="tab-data" hidden>
+      <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
+        <div class="panel-body">
+          <h3 class="sec">반복 측정 입력</h3>
+          <p class="secnote">한 줄에 <code>거리(mm), 측정1, 측정2, 측정3 ...</code> 형식으로 붙여넣으세요. 쉼표·탭·공백 모두 구분자로 인식합니다. 같은 거리를 여러 줄에 나눠 적어도 자동으로 묶입니다. 평균과 표준편차(STDEV, n−1)를 계산해 에러바로 그립니다.</p>
+          <textarea id="raw" rows="9" spellcheck="false">14.0, 24.20, 24.26, 24.20
+17.2, 22.68, 22.63, 22.60
+20.4, 20.88, 20.88, 20.89
+23.6, 19.06, 18.96, 19.03
+26.8, 17.15, 17.22, 17.15
+29.9, 15.38, 15.33, 15.30
+33.1, 13.54, 13.56, 13.60
+36.3, 11.77, 11.81, 11.81
+39.5, 10.07, 10.00, 10.03</textarea>
+          <div class="row" style="margin-top:11px">
+            <button class="act" type="button" id="parsebtn">계산</button>
+            <button class="act ghost" type="button" id="clearbtn">비우기</button>
+            <button class="act ghost" type="button" id="copytable">표 복사</button>
+            <span class="note" id="datanote">예시 데이터가 들어 있습니다 — 본인 측정값으로 바꿔 쓰세요.</span>
+          </div>
+          <div class="metrics" id="datametrics" style="margin-top:16px;border-top:1px solid var(--line-soft)"></div>
+          <div class="scroll" style="margin-top:14px"><table class="t" id="datatable"></table></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>비선형 최소자승 — 실측에서 코일의 실제 모습 역산</h2>
+        <div class="panel-body">
+          <p class="secnote">설계값을 출발점으로 삼아, 실측을 가장 잘 설명하는 <b>실제</b> 파라미터를 Levenberg–Marquardt 법으로 찾습니다. 목적은 곡선을 예쁘게 맞추는 게 아니라 <b>“이론과 실측의 차이가 어디서 왔는지”를 숫자로 쪼개는 것</b>입니다. 예를 들어 진폭 계수가 0.97로 나오면 유효 권선수·전류가 3% 부족했다는 뜻이고, 프로브 영점이 +0.8 mm로 나오면 자를 그만큼 밀려 놓고 쟀다는 뜻입니다.</p>
+
+          <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:12px">
+            <div class="f"><label>맞출 파라미터</label>
+              <div style="display:flex;flex-direction:column;gap:4px;padding-top:3px">
+                <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_k" checked> 진폭 계수 k (유효 N·I)</label>
+                <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_x0"> 프로브 영점 x₀ (mm)</label>
+                <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R1" checked> 코일1 유효 반경 (mm)</label>
+                <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_d"> 코일 간 거리 d (mm)</label>
+                <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R2"> 코일2 유효 반경 (mm)</label>
+              </div></div>
+            <div class="f"><label for="fitw">가중</label>
+              <select id="fitw">
+                <option value="1" selected>STDEV 가중 (1/σ²)</option>
+                <option value="0">비가중</option>
+              </select>
+              <label for="fitit" style="margin-top:9px">최대 반복</label>
+              <input type="number" id="fitit" value="80" step="10" min="5">
+            </div>
+          </div>
+
+          <div class="row">
+            <button class="act" type="button" id="runfit">피팅 실행</button>
+            <button class="act ghost" type="button" id="clearfit">피팅 지우기</button>
+            <button class="act ghost" type="button" id="copyfit">결과 복사</button>
+          </div>
+          <div class="scroll" style="margin-top:14px"><table class="t" id="fittable"></table></div>
+          <p class="note" id="fitnote" style="margin-top:12px">아직 피팅하지 않았습니다. 측정 데이터를 먼저 입력하고 “계산”을 누르세요.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  모델: 각 권선 한 턴을 반경 r, 축 위치 x<sub>t</sub>의 원형 루프로 보고 축상 자기장 H = Σ s·I·r²/[2(r²+(x−x<sub>t</sub>)²)<sup>3/2</sup>] 를 합산합니다 (s = 감는 방향 ±1). 단위 환산 1 Oe = 79.5774715 A/m, 구리 비저항 1.68×10⁻⁸ Ω·m.
+  얇은 코일 근사(Model 1)는 모든 턴을 평균 반경·코일 중심 한 점에 몰아넣은 경우입니다.
+</footer>
+
+</div>
+
+<script>
+"use strict";
+/* ========================================================================
+   상수 · 유틸
+   ===================================================================== */
+const OE = 79.5774715459;   // A/m per Oe
+const RHO = 1.68e-8;        // Ω·m, 구리
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:(v>b?b:v);
+const fmt = (v,d=2) => (!isFinite(v) ? "—" : v.toFixed(d));
+
+/* ========================================================================
+   코일 모델
+   coil = {R, m, n, last, dw, xc, dir}   — 길이 단위는 모두 m(미터)
+   턴 위치는 인덱스로 직접 계산한다(부동소수점 누적 금지).
+   ===================================================================== */
+function coilTurns(c){
+  const rs = [], xs = [];
+  for(let j=0;j<c.n;j++){
+    const rj = c.R + (j - (c.n-1)/2)*c.dw;
+    const cnt = (j === c.n-1) ? c.last : c.m;
+    for(let i=0;i<cnt;i++){
+      rs.push(rj);
+      xs.push(c.xc + (i - (cnt-1)/2)*c.dw);
+    }
+  }
+  return {rs:Float64Array.from(rs), xs:Float64Array.from(xs), N:rs.length};
+}
+function turnCount(c){ return c.m*(c.n-1) + c.last; }
+
+/* 한 코일의 축상 H [A/m] — 실제 권선(Model 2) */
+function H_pack(x, T, dir, I){
+  let s = 0;
+  const rs = T.rs, xs = T.xs, L = rs.length;
+  for(let k=0;k<L;k++){
+    const r = rs[k], dx = x - xs[k];
+    const q = r*r + dx*dx;
+    s += r*r/(q*Math.sqrt(q));
+  }
+  return dir*I*s/2;
+}
+/* 얇은 코일 근사(Model 1) */
+function H_thin(x, c, I){
+  const N = turnCount(c), dx = x - c.xc, q = c.R*c.R + dx*dx;
+  return c.dir*I*N*c.R*c.R/(2*q*Math.sqrt(q));
+}
+function wireLength(T){ let L=0; for(let k=0;k<T.rs.length;k++) L += 2*Math.PI*T.rs[k]; return L; }
+function resistance(len, dw){ return RHO*len/(Math.PI*(dw/2)*(dw/2)); }
+
+/* ========================================================================
+   상태 읽기
+   ===================================================================== */
+const dirState = {1:1, 2:-1};
+function readState(){
+  const dw = parseFloat($("dw").value)/1000;
+  const mk = (p, xc) => ({
+    R: Math.max(1e-4, parseFloat($("R"+p).value)/1000),
+    m: Math.max(1, Math.round(+$("m"+p).value)),
+    n: Math.max(1, Math.round(+$("n"+p).value)),
+    last: Math.max(1, Math.round(+$("l"+p).value)),
+    dw, xc, dir: dirState[p]
+  });
+  const d = parseFloat($("dist").value)/1000;
+  const c1 = mk(1, 0), c2 = mk(2, d);
+  c1.last = Math.min(c1.last, c1.m); c2.last = Math.min(c2.last, c2.m);
+  return {
+    I: parseFloat($("cur").value) || 1, dw, d, c1, c2,
+    xa: parseFloat($("xa").value)/1000, xb: parseFloat($("xb").value)/1000,
+    h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
+    pmax: parseFloat($("pmax").value) || 5
+  };
+}
+
+/* ========================================================================
+   핵심 계산
+   ===================================================================== */
+function evaluate(S, nWin = 121){
+  const T1 = coilTurns(S.c1), T2 = coilTurns(S.c2);
+  const total = x => (H_pack(x,T1,S.c1.dir,S.I) + H_pack(x,T2,S.c2.dir,S.I))/OE;
+  const thin  = x => (H_thin(x,S.c1,S.I) + H_thin(x,S.c2,S.I))/OE;
+
+  // 측정창 위 샘플
+  const xa = S.xa, xb = S.xb, span = xb - xa;
+  const wx = [], wm = [], wt = [], wthin = [];
+  for(let i=0;i<nWin;i++){
+    const u = i/(nWin-1), x = xa + span*u;
+    wx.push(x); wm.push(total(x)); wthin.push(thin(x));
+    wt.push(S.h1 + (S.h2 - S.h1)*u);
+  }
+  let maxDev = 0, sse = 0;
+  for(let i=0;i<nWin;i++){
+    const e = wm[i] - wt[i];
+    if(Math.abs(e) > maxDev) maxDev = Math.abs(e);
+    sse += e*e;
+  }
+  const rmsDev = Math.sqrt(sse/nWin);
+
+  // 자유 직선 최소자승 피팅 → 비선형성(전류를 조정해도 못 없애는 성분)
+  const fit = lsq(wx, wm);
+  let nonlin = 0;
+  for(let i=0;i<nWin;i++) nonlin = Math.max(nonlin, Math.abs(wm[i] - (fit.a*wx[i] + fit.b)));
+
+  // 전기적 특성
+  const L1 = wireLength(T1), L2 = wireLength(T2);
+  const R1o = resistance(L1, S.dw), R2o = resistance(L2, S.dw);
+  const Rtot = R1o + R2o, P = S.I*S.I*Rtot, V = S.I*Rtot;
+
+  // 코일1 단독 중심장 + 25 Oe 탭 위치
+  const h1solo = H_pack(S.c1.xc, T1, 1, S.I)/OE;
+  const tap = findTap(T1, S.I, 25);
+
+  // 변곡점 (측정창 안에서 2계 미분 = 0)
+  const infl = findInflection(total, xa, xb);
+
+  return {T1,T2,total,thin,wx,wm,wt,wthin,maxDev,rmsDev,nonlin,fit,
+          L1,L2,R1o,R2o,Rtot,P,V,h1solo,tap,infl,
+          N1:turnCount(S.c1), N2:turnCount(S.c2), span};
+}
+
+/* 최소자승 직선 (가중치 선택 가능) */
+function lsq(xs, ys, ws){
+  let sw=0, sx=0, sy=0, sxx=0, sxy=0;
+  for(let i=0;i<xs.length;i++){
+    const w = ws ? ws[i] : 1;
+    sw+=w; sx+=w*xs[i]; sy+=w*ys[i]; sxx+=w*xs[i]*xs[i]; sxy+=w*xs[i]*ys[i];
+  }
+  const den = sw*sxx - sx*sx;
+  const a = den === 0 ? 0 : (sw*sxy - sx*sy)/den;
+  const b = den === 0 ? sy/sw : (sy - a*sx)/sw;
+  // R²
+  const ym = sy/sw; let ssr=0, sst=0;
+  for(let i=0;i<xs.length;i++){
+    const w = ws ? ws[i] : 1;
+    ssr += w*Math.pow(ys[i]-(a*xs[i]+b),2); sst += w*Math.pow(ys[i]-ym,2);
+  }
+  return {a, b, r2: sst===0?1:1-ssr/sst};
+}
+
+/* 이분법: 첫 k턴만 썼을 때 중심장이 target Oe가 되는 k */
+function findTap(T, I, target){
+  const N = T.rs.length;
+  const hAt = k => {
+    let s=0;
+    for(let i=0;i<k;i++){ const r=T.rs[i], dx=-T.xs[i], q=r*r+dx*dx; s+=r*r/(q*Math.sqrt(q)); }
+    return I*s/2/OE;
+  };
+  if(N===0) return null;
+  if(hAt(N) < target) return {k:N, h:hAt(N), short:true};
+  let lo=1, hi=N;
+  while(hi-lo>1){ const mid=(lo+hi)>>1; if(hAt(mid) < target) lo=mid; else hi=mid; }
+  const a=hAt(lo), b=hAt(hi);
+  return Math.abs(a-target) < Math.abs(b-target) ? {k:lo,h:a} : {k:hi,h:b};
+}
+
+/* 수치 2계 미분으로 변곡점 찾기 */
+function findInflection(f, xa, xb){
+  const h = (xb-xa)/400;
+  const d2 = x => (f(x+h) - 2*f(x) + f(x-h))/(h*h);
+  let prev = d2(xa+h), best = null;
+  const n = 200;
+  for(let i=1;i<=n;i++){
+    const x = xa + (xb-xa)*i/n;
+    const cur = d2(x);
+    if(prev === 0 || (prev < 0) !== (cur < 0)){
+      // 이분법 정밀화
+      let lo = xa + (xb-xa)*(i-1)/n, hi = x;
+      for(let t=0;t<40;t++){
+        const mid=(lo+hi)/2;
+        if((d2(lo)<0) !== (d2(mid)<0)) hi=mid; else lo=mid;
+      }
+      best = (lo+hi)/2; break;
+    }
+    prev = cur;
+  }
+  return best;
+}
+
+/* ========================================================================
+   차트
+   ===================================================================== */
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function niceTicks(lo, hi, n){
+  const raw = (hi-lo)/n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw/mag;
+  const step = (norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10)*mag;
+  const out=[]; for(let v=Math.ceil(lo/step)*step; v<=hi+step*1e-9; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+
+let mcBand = null;   // {xs, lo, hi}
+let measured = null; // {x[], mean[], sd[], n[]}
+
+function drawMain(S, E){
+  const svg = $("mainchart");
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const W=760, Hh=340, pad={l:54,r:16,t:14,b:40};
+  const pw = W-pad.l-pad.r, ph = Hh-pad.t-pad.b;
+
+  // x 범위: 코일1 왼쪽 조금부터 코일2 오른쪽 조금까지
+  const x0 = Math.min(-S.c1.R*0.6, S.xa - S.span*0.15);
+  const x1 = Math.max(S.d + S.c2.R*0.6, S.xb + S.span*0.15);
+  const xs=[], ym=[], yt=[];
+  const NP = 260;
+  for(let i=0;i<NP;i++){ const x = x0 + (x1-x0)*i/(NP-1); xs.push(x); ym.push(E.total(x)); if($("showthin").checked) yt.push(E.thin(x)); }
+
+  let lo = Math.min(0, ...ym), hi = Math.max(...ym, S.h1);
+  if(measured && $("showmeas").checked) { hi = Math.max(hi, ...measured.mean.map((v,i)=>v+measured.sd[i])); }
+  if(mcBand && $("showmc").checked) hi = Math.max(hi, ...mcBand.hi);
+  const padY = (hi-lo)*0.08; lo = Math.max(0, lo-padY); hi = hi+padY;
+
+  const X = v => pad.l + (v - x0)/(x1-x0)*pw;
+  const Y = v => pad.t + (1-(v-lo)/(hi-lo))*ph;
+
+  const cLine = css("--line-soft"), cMuted = css("--muted");
+  const cModel = css("--s-model"), cThin = css("--s-thin"), cMeas = css("--s-meas"), cInk2 = css("--ink-2");
+
+  // 측정창 음영
+  svg.appendChild(el("rect",{x:X(S.xa), y:pad.t, width:Math.max(0,X(S.xb)-X(S.xa)), height:ph,
+    fill:css("--accent"), opacity:.055}));
+
+  // 그리드 + 축
+  const yt2 = niceTicks(lo,hi,5);
+  yt2.forEach(v=>{
+    svg.appendChild(el("line",{x1:pad.l,x2:pad.l+pw,y1:Y(v),y2:Y(v),stroke:cLine,"stroke-width":1}));
+    const t = el("text",{x:pad.l-8,y:Y(v)+3.5,"text-anchor":"end"}); t.textContent = v; svg.appendChild(t);
+  });
+  niceTicks(x0*1000,x1*1000,7).forEach(v=>{
+    const px = X(v/1000); if(px<pad.l-1||px>pad.l+pw+1) return;
+    svg.appendChild(el("line",{x1:px,x2:px,y1:pad.t+ph,y2:pad.t+ph+4,stroke:cMuted,"stroke-width":1}));
+    const t = el("text",{x:px,y:pad.t+ph+16,"text-anchor":"middle"}); t.textContent = v; svg.appendChild(t);
+  });
+  svg.appendChild(el("line",{x1:pad.l,x2:pad.l+pw,y1:pad.t+ph,y2:pad.t+ph,stroke:cMuted,"stroke-width":1}));
+  let at = el("text",{x:pad.l+pw/2,y:Hh-6,"text-anchor":"middle",class:"axis-title"});
+  at.textContent = "코일 1 중심으로부터의 거리  (mm)"; svg.appendChild(at);
+  at = el("text",{x:14,y:pad.t+ph/2,"text-anchor":"middle",class:"axis-title",
+    transform:`rotate(-90 14 ${pad.t+ph/2})`});
+  at.textContent = "자기장 세기 H  (Oe)"; svg.appendChild(at);
+
+  // 코일 위치 표시
+  [[0,"코일 1"],[S.d,"코일 2"]].forEach(([xc,lab])=>{
+    const px = X(xc);
+    svg.appendChild(el("line",{x1:px,x2:px,y1:pad.t,y2:pad.t+ph,stroke:cMuted,"stroke-width":1,
+      "stroke-dasharray":"2 4",opacity:.55}));
+    const t = el("text",{x:px+4,y:pad.t+11}); t.textContent = lab; svg.appendChild(t);
+  });
+
+  // 몬테카를로 밴드
+  if(mcBand && $("showmc").checked){
+    let dd = "";
+    mcBand.xs.forEach((x,i)=>{ dd += (i?"L":"M") + X(x) + " " + Y(mcBand.hi[i]); });
+    for(let i=mcBand.xs.length-1;i>=0;i--) dd += "L" + X(mcBand.xs[i]) + " " + Y(mcBand.lo[i]);
+    dd += "Z";
+    svg.appendChild(el("path",{d:dd, fill:cModel, opacity:.14, stroke:"none"}));
+  }
+
+  // 코일별 기여
+  if($("showparts").checked){
+    [[E.T1,S.c1.dir,cModel],[E.T2,S.c2.dir,cThin]].forEach(([T,dir,col])=>{
+      let dd="";
+      xs.forEach((x,i)=>{ dd += (i?"L":"M") + X(x) + " " + Y(H_pack(x,T,dir,S.I)/OE); });
+      svg.appendChild(el("path",{d:dd,fill:"none",stroke:col,"stroke-width":1,opacity:.45,
+        "stroke-dasharray":"1 3"}));
+    });
+  }
+
+  // 목표 직선
+  svg.appendChild(el("line",{x1:X(S.xa),y1:Y(S.h1),x2:X(S.xb),y2:Y(S.h2),
+    stroke:cInk2,"stroke-width":1.6,"stroke-dasharray":"6 4",opacity:.8}));
+
+  // Model 1
+  if($("showthin").checked){
+    let dd=""; xs.forEach((x,i)=>{ dd += (i?"L":"M") + X(x) + " " + Y(yt[i]); });
+    svg.appendChild(el("path",{d:dd,fill:"none",stroke:cThin,"stroke-width":2,
+      "stroke-dasharray":"5 3","stroke-linejoin":"round"}));
+  }
+
+  // Model 2 (주 곡선)
+  let d2=""; xs.forEach((x,i)=>{ d2 += (i?"L":"M") + X(x) + " " + Y(ym[i]); });
+  svg.appendChild(el("path",{d:d2,fill:"none",stroke:cModel,"stroke-width":2.5,
+    "stroke-linejoin":"round","stroke-linecap":"round"}));
+
+  // 비선형 최소자승 피팅 곡선
+  if(fitResult){
+    const fn = modelMaker(S, fitResult.P);
+    let df=""; xs.forEach((x,i)=>{ df += (i?"L":"M") + X(x) + " " + Y(fn(x*1000)); });
+    svg.appendChild(el("path",{d:df,fill:"none",stroke:cMeas,"stroke-width":2,
+      "stroke-dasharray":"7 4","stroke-linejoin":"round",opacity:.9}));
+  }
+
+  // 변곡점
+  if(E.infl != null){
+    const px = X(E.infl), py = Y(E.total(E.infl));
+    svg.appendChild(el("circle",{cx:px,cy:py,r:4,fill:"none",stroke:cModel,"stroke-width":1.5}));
+    svg.appendChild(el("line",{x1:px,y1:py-7,x2:px,y2:py-24,stroke:cModel,"stroke-width":1,opacity:.6}));
+    const t = el("text",{x:px,y:py-29,"text-anchor":"middle",style:"fill:"+cModel});
+    t.textContent = "변곡점 " + fmt(E.infl*1000,1) + " mm"; svg.appendChild(t);
+  }
+
+  // 실측
+  if(measured && $("showmeas").checked){
+    measured.x.forEach((xm,i)=>{
+      const px = X(xm/1000), py = Y(measured.mean[i]), sd = measured.sd[i];
+      if(sd>0){
+        svg.appendChild(el("line",{x1:px,x2:px,y1:Y(measured.mean[i]-sd),y2:Y(measured.mean[i]+sd),
+          stroke:cMeas,"stroke-width":1.5}));
+        [-1,1].forEach(s=>svg.appendChild(el("line",{x1:px-3.5,x2:px+3.5,
+          y1:Y(measured.mean[i]+s*sd),y2:Y(measured.mean[i]+s*sd),stroke:cMeas,"stroke-width":1.5})));
+      }
+      svg.appendChild(el("circle",{cx:px,cy:py,r:3.6,fill:cMeas,stroke:css("--surface"),"stroke-width":2}));
+    });
+  }
+
+  // hover
+  const ov = el("rect",{x:pad.l,y:pad.t,width:pw,height:ph,fill:"transparent",style:"cursor:crosshair"});
+  const ch = el("line",{x1:0,x2:0,y1:pad.t,y2:pad.t+ph,stroke:cMuted,"stroke-width":1,opacity:0});
+  svg.appendChild(ch); svg.appendChild(ov);
+  const tip = $("tip");
+  ov.addEventListener("mousemove", ev=>{
+    const r = svg.getBoundingClientRect();
+    const sx = (ev.clientX - r.left)/r.width*W;
+    const xv = x0 + (sx - pad.l)/pw*(x1-x0);
+    ch.setAttribute("x1",sx); ch.setAttribute("x2",sx); ch.setAttribute("opacity",".5");
+    const hv = E.total(xv);
+    let txt = `x = ${fmt(xv*1000,1)} mm<br>H = <b>${fmt(hv,2)} Oe</b>`;
+    if(xv >= S.xa && xv <= S.xb){
+      const tv = S.h1 + (S.h2-S.h1)*(xv-S.xa)/S.span;
+      txt += `<br>목표 ${fmt(tv,2)} · 편차 ${fmt(hv-tv,3)}`;
+    }
+    tip.innerHTML = txt; tip.style.opacity = 1;
+    tip.style.left = Math.min(r.width-120, sx/W*r.width + 12) + "px";
+    tip.style.top  = 8 + "px";
+  });
+  ov.addEventListener("mouseleave", ()=>{ tip.style.opacity=0; ch.setAttribute("opacity",0); });
+
+  // 범례
+  const items = [["Model 2 — 실제 권선",cModel,"solid"]];
+  if($("showthin").checked) items.push(["Model 1 — 얇은 코일 근사",cThin,"dash"]);
+  items.push(["목표 직선",cInk2,"dash"]);
+  if(measured && $("showmeas").checked) items.push(["실측 평균 ± STDEV",cMeas,"solid"]);
+  if(fitResult) items.push(["비선형 최소자승 피팅",cMeas,"dash"]);
+  if(mcBand && $("showmc").checked) items.push(["공차 밴드 (5–95%)",cModel,"band"]);
+  $("legend").innerHTML = items.map(([l,c,k])=>
+    `<span><i style="border-top-color:${c};border-top-style:${k==="dash"?"dashed":"solid"};${
+      k==="band"?`border:0;height:9px;background:${c};opacity:.28;border-radius:2px;vertical-align:-1px`:""}"></i>${l}</span>`
+  ).join("");
+}
+
+function drawResid(S, E){
+  const svg = $("residchart");
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const W=760, Hh=180, pad={l:54,r:16,t:12,b:34};
+  const pw=W-pad.l-pad.r, ph=Hh-pad.t-pad.b;
+  const res = E.wm.map((v,i)=>v-E.wt[i]);
+  const m = Math.max(1e-6, ...res.map(Math.abs))*1.25;
+  const X = v => pad.l + (v-S.xa)/S.span*pw;
+  const Y = v => pad.t + (1-(v+m)/(2*m))*ph;
+  const cLine=css("--line-soft"), cMuted=css("--muted"), cModel=css("--s-model");
+
+  niceTicks(-m,m,4).forEach(v=>{
+    svg.appendChild(el("line",{x1:pad.l,x2:pad.l+pw,y1:Y(v),y2:Y(v),stroke:cLine,"stroke-width":1}));
+    const t=el("text",{x:pad.l-8,y:Y(v)+3.5,"text-anchor":"end"}); t.textContent=v.toFixed(2); svg.appendChild(t);
+  });
+  svg.appendChild(el("line",{x1:pad.l,x2:pad.l+pw,y1:Y(0),y2:Y(0),stroke:cMuted,"stroke-width":1.2}));
+  niceTicks(S.xa*1000,S.xb*1000,6).forEach(v=>{
+    const px=X(v/1000); if(px<pad.l-1||px>pad.l+pw+1) return;
+    const t=el("text",{x:px,y:pad.t+ph+16,"text-anchor":"middle"}); t.textContent=v; svg.appendChild(t);
+  });
+  let t2=el("text",{x:pad.l+pw/2,y:Hh-4,"text-anchor":"middle",class:"axis-title"});
+  t2.textContent="거리 (mm)"; svg.appendChild(t2);
+  t2=el("text",{x:14,y:pad.t+ph/2,"text-anchor":"middle",class:"axis-title",
+    transform:`rotate(-90 14 ${pad.t+ph/2})`});
+  t2.textContent="편차 (Oe)"; svg.appendChild(t2);
+
+  let dd=""; E.wx.forEach((x,i)=>{ dd += (i?"L":"M") + X(x) + " " + Y(res[i]); });
+  svg.appendChild(el("path",{d:dd,fill:"none",stroke:cModel,"stroke-width":2,"stroke-linejoin":"round"}));
+
+  // 실측 잔차
+  if(measured && $("showmeas").checked){
+    const cMeas=css("--s-meas");
+    measured.x.forEach((xm,i)=>{
+      const x=xm/1000; if(x<S.xa||x>S.xb) return;
+      const tv = S.h1 + (S.h2-S.h1)*(x-S.xa)/S.span;
+      const r = measured.mean[i]-tv;
+      if(Math.abs(r)>m) return;
+      svg.appendChild(el("circle",{cx:X(x),cy:Y(r),r:3.2,fill:cMeas,stroke:css("--surface"),"stroke-width":1.5}));
+    });
+  }
+}
+
+/* ========================================================================
+   메트릭 · 판정칩
+   ===================================================================== */
+function renderMetrics(S, E){
+  const pct = v => (v/Math.abs(S.h1-S.h2)*100);
+  const items = [
+    ["최대 편차", fmt(E.maxDev,3), "Oe  ·  "+fmt(pct(E.maxDev),2)+"%", true],
+    ["RMS 편차", fmt(E.rmsDev,3), "Oe"],
+    ["비선형성", fmt(E.nonlin,3), "Oe  ·  "+fmt(pct(E.nonlin),2)+"%"],
+    ["구배 기울기", fmt(E.fit.a/100,2), "Oe/cm"],
+    ["코일1 단독 중심장", fmt(E.h1solo,2), "Oe"],
+    ["총 권선 수", E.N1+" / "+E.N2, "턴"],
+    ["총 저항", fmt(E.Rtot,2), "Ω"],
+    ["필요 전압", fmt(E.V,2), "V"],
+    ["발열", fmt(E.P,2), "W"],
+    ["구리선 길이", fmt(E.L1+E.L2,1), "m"],
+  ];
+  $("metrics").innerHTML = items.map(([k,v,u,hi])=>
+    `<div class="metric${hi?" hi":""}"><div class="k">${k}</div><div class="v">${v}<small>${u||""}</small></div></div>`
+  ).join("");
+
+  const chips = [];
+  const ok25 = Math.abs(E.h1solo-25) <= 1.0;
+  chips.push([ok25?"ok":"warn", `요구사항 1 · 코일1 단독 ${fmt(E.h1solo,2)} Oe`,
+    ok25 ? "25±1.0 만족" : "25±1.0 벗어남"]);
+  if(!ok25 && E.tap && !E.tap.short)
+    chips.push(["ok", `탭 인출`, `${E.tap.k}턴에서 빼면 ${fmt(E.tap.h,2)} Oe`]);
+  chips.push([S.I<=1.001?"ok":"bad", `전류 ${fmt(S.I,2)} A`, S.I<=1.001?"1 A 이하":"1 A 초과"]);
+  const pOk = E.P <= S.pmax;
+  chips.push([pOk?"ok":"bad", `발열 ${fmt(E.P,2)} W`, pOk?`상한 ${S.pmax} W 이내`:`상한 ${S.pmax} W 초과`]);
+  chips.push(["ok", `측정창 ${fmt(S.span*1000,1)} mm`, `${fmt(S.xa*1000,1)} → ${fmt(S.xb*1000,1)} mm`]);
+  $("chips").innerHTML = chips.map(([c,a,b])=>`<span class="chip ${c}"><b>${a}</b>${b}</span>`).join("");
+
+  // 권선 치수
+  const dv = (p,c,T,len,res) => {
+    $("dv"+p).innerHTML =
+      `<span>턴 수 <b>${turnCount(c)}</b></span>`+
+      `<span>권선 폭 <b>${fmt(c.m*c.dw*1000,1)} mm</b></span>`+
+      `<span>권선 두께 <b>${fmt(c.n*c.dw*1000,1)} mm</b></span>`+
+      `<span>안쪽 반경 <b>${fmt((c.R-(c.n-1)/2*c.dw)*1000-c.dw*500,1)} mm</b></span>`+
+      `<span>선 길이 <b>${fmt(len,1)} m</b></span>`+
+      `<span>저항 <b>${fmt(res,2)} Ω</b></span>`;
+  };
+  dv(1,S.c1,E.T1,E.L1,E.R1o); dv(2,S.c2,E.T2,E.L2,E.R2o);
+
+  const dth = 100*(E.wm[0]-E.wthin[0])/E.wthin[0];
+  const dthEnd = 100*(E.wm[E.wm.length-1]-E.wthin[E.wthin.length-1])/E.wthin[E.wthin.length-1];
+  $("residnote").innerHTML =
+    `측정창 안에서 모델이 목표 직선을 최대 <b>${fmt(E.maxDev,3)} Oe</b> (${fmt(pct(E.maxDev),2)}%) 벗어납니다. `+
+    `이 중 전류를 미세 조정해도 없앨 수 없는 순수 비선형 성분은 <b>${fmt(E.nonlin,3)} Oe</b> (${fmt(pct(E.nonlin),2)}%) 입니다. `+
+    `실제 권선(Model 2)과 얇은 코일 근사(Model 1)의 차이는 창 시작에서 <b>${fmt(dth,2)}%</b>, 창 끝에서 <b>${fmt(dthEnd,2)}%</b> 입니다.`+
+    (E.infl!=null ? ` 자기장 곡률이 0이 되는 변곡점은 <b>x = ${fmt(E.infl*1000,1)} mm</b> 에 있습니다 — 측정창을 이 지점 주위에 두면 선형성이 가장 좋습니다.` : "");
+}
+
+/* ========================================================================
+   렌더 파이프라인
+   ===================================================================== */
+let S = null, E = null;
+function render(){
+  S = readState();
+  if(!(S.xb > S.xa)){ S.xb = S.xa + 0.001; }
+  S.span = S.xb - S.xa;
+  E = evaluate(S);
+  drawMain(S,E); drawResid(S,E); renderMetrics(S,E);
+  if(measured) renderData();
+}
+
+/* ========================================================================
+   최적화 — 차분진화(DE)
+   ===================================================================== */
+const OPTVARS = [
+  {k:"R1",  label:"코일1 반경 (mm)",     min:20,  max:60,  int:false},
+  {k:"m1",  label:"코일1 층당 턴 수",     min:8,   max:40,  int:true},
+  {k:"n1",  label:"코일1 층 수",          min:1,   max:20,  int:true},
+  {k:"R2",  label:"코일2 반경 (mm)",     min:15,  max:60,  int:false},
+  {k:"m2",  label:"코일2 층당 턴 수",     min:1,   max:40,  int:true},
+  {k:"n2",  label:"코일2 층 수",          min:1,   max:12,  int:true},
+  {k:"d",   label:"코일 중심간 거리 (mm)", min:30, max:140, int:false},
+  {k:"xa",  label:"측정창 시작 (mm)",     min:0,   max:80,  int:false},
+  {k:"xb",  label:"측정창 끝 (mm)",       min:10,  max:140, int:false},
+];
+function buildOptTable(){
+  const tb = $("optvars").querySelector("tbody");
+  tb.innerHTML = OPTVARS.map(v=>`<tr>
+    <td>${v.label}</td>
+    <td><input type="checkbox" id="ov_${v.k}" ${["R1","m1","n1","d","xa","xb","m2"].includes(v.k)?"checked":""}></td>
+    <td><input type="number" id="ol_${v.k}" value="${v.min}" step="${v.int?1:0.5}"></td>
+    <td><input type="number" id="oh_${v.k}" value="${v.max}" step="${v.int?1:0.5}"></td>
+  </tr>`).join("");
+}
+
+function packFromVec(base, vec, act){
+  const o = {...base};
+  act.forEach((v,i)=>{ o[v.k] = v.int ? Math.round(vec[i]) : vec[i]; });
+  return o;
+}
+function objective(p, S0, mode, minWin, dir2){
+  const dw = S0.dw;
+  const c1 = {R:p.R1/1000, m:Math.max(1,p.m1), n:Math.max(1,p.n1), last:Math.max(1,p.m1), dw, xc:0, dir:S0.c1.dir};
+  const c2 = {R:p.R2/1000, m:Math.max(1,p.m2), n:Math.max(1,p.n2), last:Math.max(1,p.m2), dw, xc:p.d/1000, dir:dir2};
+  const xa = p.xa/1000, xb = p.xb/1000;
+  if(!(xb - xa >= minWin/1000)) return 1e6;
+  if(xb > p.d/1000 + 0.02 || xa < -0.02) return 1e6;
+  const T1 = coilTurns(c1), T2 = coilTurns(c2);
+  const NP = 31; let maxd=0, sse=0;
+  for(let i=0;i<NP;i++){
+    const u = i/(NP-1), x = xa + (xb-xa)*u;
+    const h = (H_pack(x,T1,c1.dir,S0.I) + H_pack(x,T2,c2.dir,S0.I))/OE;
+    const t = S0.h1 + (S0.h2-S0.h1)*u;
+    const e = h - t; sse += e*e; if(Math.abs(e)>maxd) maxd = Math.abs(e);
+  }
+  let v = mode === "max" ? maxd : sse/NP;
+  const P = S0.I*S0.I*(resistance(wireLength(T1),dw) + resistance(wireLength(T2),dw));
+  if(P > S0.pmax) v += 2*(P - S0.pmax);
+  return v;
+}
+
+let optBest = null, optRunning = false;
+function runOptimize(){
+  if(optRunning) return;
+  const S0 = readState();
+  const act = OPTVARS.filter(v => $("ov_"+v.k).checked);
+  if(!act.length){ $("optlog").textContent = "탐색할 변수를 하나 이상 선택하세요."; return; }
+  const base = {R1:S0.c1.R*1000, m1:S0.c1.m, n1:S0.c1.n, R2:S0.c2.R*1000,
+                m2:S0.c2.m, n2:S0.c2.n, d:S0.d*1000, xa:S0.xa*1000, xb:S0.xb*1000};
+  const lo = act.map(v => +$("ol_"+v.k).value), hi = act.map(v => +$("oh_"+v.k).value);
+  for(let j=0;j<lo.length;j++) if(hi[j] < lo[j]){ const t=lo[j]; lo[j]=hi[j]; hi[j]=t; }
+  const mode = $("objsel").value, minWin = +$("minwin").value;
+  const dirs = $("dir2sel").value === "auto" ? [1,-1] : [S0.c2.dir];
+
+  const D = act.length, NPOP = clamp(6*D, 24, 60), GENS = Math.max(20, +$("gens").value|0);
+  const F = 0.7, CR = 0.9;
+  let pop, fit, di = 0, g = 0, evals = 0;
+  let bestX = null, bestF = Infinity, bestDir = dirs[0];
+  const t0 = performance.now();
+
+  const initPop = () => {
+    pop = []; fit = [];
+    for(let i=0;i<NPOP;i++){
+      const v = lo.map((l,j)=> l + Math.random()*(hi[j]-l));
+      pop.push(v); fit.push(objective(packFromVec(base,v,act), S0, mode, minWin, dirs[di]));
+      evals++;
+    }
+  };
+  const oneGen = () => {
+    const dir2 = dirs[di];
+    for(let i=0;i<NPOP;i++){
+      let a,b,c;
+      do{a=(Math.random()*NPOP)|0;}while(a===i);
+      do{b=(Math.random()*NPOP)|0;}while(b===i||b===a);
+      do{c=(Math.random()*NPOP)|0;}while(c===i||c===a||c===b);
+      const jr=(Math.random()*D)|0, trial=new Array(D);
+      for(let j=0;j<D;j++){
+        trial[j] = (Math.random()<CR || j===jr)
+          ? clamp(pop[a][j] + F*(pop[b][j]-pop[c][j]), lo[j], hi[j])
+          : pop[i][j];
+      }
+      const f = objective(packFromVec(base,trial,act), S0, mode, minWin, dir2);
+      evals++;
+      if(f < fit[i]){ pop[i]=trial; fit[i]=f; }
+      if(f < bestF){ bestF=f; bestX=trial.slice(); bestDir=dir2; }
+    }
+  };
+  const finish = () => {
+    optRunning = false;
+    $("runopt").disabled = false;
+    $("optbar").style.width = "100%";
+    if(!bestX || bestF >= 1e5){
+      $("optlog").textContent = "유효한 해를 찾지 못했습니다. 최소 측정창 길이를 줄이거나 변수 범위를 넓혀 보세요.";
+      return;
+    }
+    const p = packFromVec(base, bestX, act);
+    optBest = {p, dir2:bestDir};
+    $("applyopt").disabled = false;
+    const N1 = p.m1*p.n1, N2 = p.m2*p.n2;
+    const dwmm = S0.dw*1000;
+    $("optlog").textContent =
+`완료.  ${mode==="max"?"최대편차":"MSE"} = ${mode==="max"?bestF.toFixed(4)+" Oe":bestF.toExponential(4)}
+평가 횟수 ${evals.toLocaleString()} · 소요 ${((performance.now()-t0)/1000).toFixed(1)} s
+
+코일 1 : R = ${p.R1.toFixed(1)} mm,  ${p.m1}턴 × ${p.n1}층 = ${N1}턴
+         권선 ${(p.m1*dwmm).toFixed(1)} (폭) × ${(p.n1*dwmm).toFixed(1)} (두께) mm
+코일 2 : R = ${p.R2.toFixed(1)} mm,  ${p.m2}턴 × ${p.n2}층 = ${N2}턴, ${bestDir>0?"정방향 +":"역방향 −"}
+         권선 ${(p.m2*dwmm).toFixed(1)} (폭) × ${(p.n2*dwmm).toFixed(1)} (두께) mm
+중심간 거리 d = ${p.d.toFixed(1)} mm
+측정창 = ${p.xa.toFixed(1)} → ${p.xb.toFixed(1)} mm  (길이 ${(p.xb-p.xa).toFixed(1)} mm)
+
+"결과 적용"을 누르면 왼쪽 파라미터에 반영됩니다.`;
+  };
+
+  optRunning = true;
+  $("runopt").disabled = true;
+  $("applyopt").disabled = true;
+  initPop();
+
+  const tick = () => {
+    const t = performance.now();
+    while(performance.now() - t < 70){
+      oneGen(); g++;
+      if(g >= GENS){
+        di++; g = 0;
+        if(di >= dirs.length){ finish(); return; }
+        initPop();
+      }
+    }
+    const frac = (di + g/GENS)/dirs.length;
+    $("optbar").style.width = (frac*100).toFixed(1)+"%";
+    $("optlog").textContent =
+      `탐색 중…  코일2 ${dirs[di]>0?"정방향":"역방향"} · 세대 ${g}/${GENS}` +
+      (dirs.length>1 ? `  (${di+1}/${dirs.length} 단계)` : "") +
+      `\n현재 최선 ${mode==="max"?"최대편차":"MSE"} = ${bestF < 1e5 ? bestF.toFixed(5) : "아직 없음"}`;
+    setTimeout(tick, 0);
+  };
+  tick();
+}
+
+function applyOpt(){
+  if(!optBest) return;
+  const p = optBest.p;
+  $("R1").value = p.R1.toFixed(1); $("m1").value = p.m1; $("n1").value = p.n1; $("l1").value = p.m1;
+  $("R2").value = p.R2.toFixed(1); $("m2").value = p.m2; $("n2").value = p.n2; $("l2").value = p.m2;
+  $("dist").value = p.d.toFixed(1);
+  $("xa").value = p.xa.toFixed(1); $("xb").value = p.xb.toFixed(1);
+  setDir(2, optBest.dir2);
+  render();
+}
+
+/* ========================================================================
+   민감도 (중심차분) + 몬테카를로
+   ===================================================================== */
+function sensitivity(){
+  const S0 = readState(); S0.span = S0.xb - S0.xa;
+  const tR = +$("tR").value/1000, tN = Math.round(+$("tN").value),
+        td = +$("td").value/1000, tI = +$("tI").value/100, tx = +$("tx").value/1000;
+
+  const evalWith = mod => {
+    const s = JSON.parse(JSON.stringify(S0));
+    s.c1.dir = S0.c1.dir; s.c2.dir = S0.c2.dir;
+    mod(s);
+    s.c2.xc = s.d;
+    const T1 = coilTurns(s.c1), T2 = coilTurns(s.c2);
+    const f = x => (H_pack(x,T1,s.c1.dir,s.I) + H_pack(x,T2,s.c2.dir,s.I))/OE;
+    const NP = 61; let maxd = 0;
+    const hs = [];
+    for(let i=0;i<NP;i++){
+      const u=i/(NP-1), x = s.xa + (s.xb - s.xa)*u;
+      const h = f(x + (mod.xshift||0)), t = s.h1 + (s.h2-s.h1)*u;
+      hs.push(h); if(Math.abs(h-t) > maxd) maxd = Math.abs(h-t);
+    }
+    return {hStart:hs[0], hMid:hs[(NP-1)/2|0], hEnd:hs[NP-1], maxd};
+  };
+  const base = evalWith(()=>{});
+
+  const rows = [];
+  const add = (name, delta, fPlus, fMinus) => {
+    const a = evalWith(fPlus), b = evalWith(fMinus);
+    rows.push({name, delta,
+      dStart:(a.hStart-b.hStart)/2, dMid:(a.hMid-b.hMid)/2, dEnd:(a.hEnd-b.hEnd)/2,
+      dMax:(Math.max(a.maxd,b.maxd)-base.maxd)});
+  };
+  add(`코일1 반경 R₁`, `±${(tR*1000).toFixed(2)} mm`, s=>{s.c1.R+=tR;}, s=>{s.c1.R-=tR;});
+  add(`코일2 반경 R₂`, `±${(tR*1000).toFixed(2)} mm`, s=>{s.c2.R+=tR;}, s=>{s.c2.R-=tR;});
+  /* 턴을 k개 더하거나 빼되, 층 경계를 넘으면 층 수까지 조정한다 */
+  const addTurns = (c,k) => {
+    let total = Math.max(1, c.m*(c.n-1) + c.last + k);
+    c.n = Math.max(1, Math.ceil(total/c.m));
+    c.last = total - c.m*(c.n-1);
+    if(c.last <= 0){ c.n = Math.max(1,c.n-1); c.last = total - c.m*(c.n-1); }
+  };
+  add(`코일1 턴 수 N₁`, `±${tN} 턴`, s=>addTurns(s.c1, tN), s=>addTurns(s.c1,-tN));
+  add(`코일2 턴 수 N₂`, `±${tN} 턴`, s=>addTurns(s.c2, tN), s=>addTurns(s.c2,-tN));
+  add(`코일 간 거리 d`, `±${(td*1000).toFixed(2)} mm`, s=>{s.d+=td;}, s=>{s.d-=td;});
+  add(`전류 I`, `±${(tI*100).toFixed(1)} %`, s=>{s.I*=(1+tI);}, s=>{s.I*=(1-tI);});
+  const px = s=>{}; px.xshift = tx; const mx = s=>{}; mx.xshift = -tx;
+  add(`프로브 위치 x`, `±${(tx*1000).toFixed(2)} mm`, px, mx);
+
+  rows.sort((a,b)=>Math.abs(b.dMid)-Math.abs(a.dMid));
+  const pctOf = (v,h) => (v/h*100);
+  $("senstable").innerHTML =
+    `<thead><tr><th>파라미터</th><th>흔든 폭</th><th>창 시작 ΔH</th><th>창 중앙 ΔH</th><th>창 끝 ΔH</th><th>창 중앙 %</th><th>최대편차 변화</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${r.name}</td><td>${r.delta}</td>
+      <td>${r.dStart>=0?"+":""}${fmt(r.dStart,3)}</td>
+      <td>${r.dMid>=0?"+":""}${fmt(r.dMid,3)}</td>
+      <td>${r.dEnd>=0?"+":""}${fmt(r.dEnd,3)}</td>
+      <td><b>${fmt(Math.abs(pctOf(r.dMid, base.hMid)),2)}%</b></td>
+      <td>${r.dMax>=0?"+":""}${fmt(r.dMax,3)} Oe</td></tr>`).join("")+
+    `</tbody>`;
+}
+
+function gauss(){ let u=0,v=0; while(!u) u=Math.random(); while(!v) v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+function runMC(){
+  const S0 = readState(); S0.span = S0.xb - S0.xa;
+  const n = Math.max(50, +$("mcn").value|0);
+  const tR = +$("tR").value/1000, td = +$("td").value/1000, tI = +$("tI").value/100;
+  const NP = 61;
+  const xs = []; for(let i=0;i<NP;i++) xs.push(S0.xa + S0.span*i/(NP-1));
+  const cols = Array.from({length:NP}, ()=>[]);
+
+  let done = 0;
+  const step = () => {
+    const chunk = Math.min(40, n-done);
+    for(let t=0;t<chunk;t++,done++){
+      const c1 = {...S0.c1, R: S0.c1.R + gauss()*tR};
+      const c2 = {...S0.c2, R: S0.c2.R + gauss()*tR, xc: S0.d + gauss()*td};
+      const I  = S0.I*(1 + gauss()*tI);
+      const T1 = coilTurns(c1), T2 = coilTurns(c2);
+      for(let i=0;i<NP;i++)
+        cols[i].push((H_pack(xs[i],T1,c1.dir,I) + H_pack(xs[i],T2,c2.dir,I))/OE);
+    }
+    $("mcbar").style.width = (done/n*100).toFixed(1)+"%";
+    if(done < n){ setTimeout(step,0); return; }
+    const loA=[], hiA=[];
+    let widest = 0;
+    cols.forEach(col=>{
+      col.sort((a,b)=>a-b);
+      const l = col[Math.floor(col.length*0.05)], h = col[Math.floor(col.length*0.95)];
+      loA.push(l); hiA.push(h); widest = Math.max(widest, h-l);
+    });
+    mcBand = {xs, lo:loA, hi:hiA};
+    $("showmc").checked = true;
+    $("mcnote").innerHTML =
+      `${n}회 시행. 5–95 백분위 밴드의 최대 폭은 <b>${fmt(widest,3)} Oe</b> `+
+      `(목표 스팬 ${Math.abs(S0.h1-S0.h2)} Oe의 ${fmt(widest/Math.abs(S0.h1-S0.h2)*100,2)}%) 입니다. `+
+      `실측 평균이 이 밴드 안에 들어오면 편차는 제작 공차만으로 설명됩니다.`;
+    render();
+  };
+  step();
+}
+
+/* ========================================================================
+   측정 데이터
+   ===================================================================== */
+function parseData(){
+  const txt = $("raw").value.trim();
+  if(!txt){ measured = null; $("datanote").textContent = "입력이 비어 있습니다."; render(); return; }
+  const map = new Map();
+  let bad = 0;
+  txt.split(/\n+/).forEach(line=>{
+    const parts = line.trim().split(/[\s,;\t]+/).map(Number).filter(v=>!isNaN(v));
+    if(parts.length < 2){ if(line.trim()) bad++; return; }
+    const x = +parts[0].toFixed(4);
+    if(!map.has(x)) map.set(x, []);
+    for(let i=1;i<parts.length;i++) map.get(x).push(parts[i]);
+  });
+  const keys = [...map.keys()].sort((a,b)=>a-b);
+  if(!keys.length){ measured = null; $("datanote").textContent = "읽을 수 있는 숫자가 없습니다."; render(); return; }
+  measured = {x:keys, mean:[], sd:[], n:[]};
+  keys.forEach(k=>{
+    const v = map.get(k), n = v.length;
+    const mu = v.reduce((a,b)=>a+b,0)/n;
+    const sd = n>1 ? Math.sqrt(v.reduce((a,b)=>a+(b-mu)*(b-mu),0)/(n-1)) : 0;
+    measured.mean.push(mu); measured.sd.push(sd); measured.n.push(n);
+  });
+  const minN = Math.min(...measured.n);
+  $("datanote").innerHTML = `${keys.length}개 지점 · 지점당 ${minN}~${Math.max(...measured.n)}회 측정`
+    + (minN < 3 ? ` <b style="color:var(--warn)">— 최소 3회 요구를 못 채운 지점이 있습니다.</b>` : "");
+  render();
+}
+
+function renderData(){
+  if(!measured) return;
+  const xs = measured.x.map(v=>v/1000);
+  const mdl = xs.map(x=>E.total(x));
+  // STDEV를 가중치로 쓴 최소자승 (sd=0 이면 최소 sd의 절반으로 대체)
+  const posSd = measured.sd.filter(v=>v>0);
+  const floor = posSd.length ? Math.min(...posSd)/2 : 1;
+  const ws = measured.sd.map(s => 1/Math.pow(s>0?s:floor, 2));
+  const wfit = lsq(xs, measured.mean, ws);
+  const ufit = lsq(xs, measured.mean);
+
+  let maxErrM = 0, maxErrF = 0;
+  const rows = measured.x.map((xm,i)=>{
+    const x = xm/1000, fitv = wfit.a*x + wfit.b;
+    const eM = (measured.mean[i]-mdl[i])/mdl[i]*100;
+    const eF = (measured.mean[i]-fitv)/fitv*100;
+    maxErrM = Math.max(maxErrM, Math.abs(eM)); maxErrF = Math.max(maxErrF, Math.abs(eF));
+    let band = "—";
+    if(mcBand){
+      const j = mcBand.xs.reduce((best,v,k)=>Math.abs(v-x)<Math.abs(mcBand.xs[best]-x)?k:best,0);
+      band = (measured.mean[i] >= mcBand.lo[j] && measured.mean[i] <= mcBand.hi[j]) ? "안" : "밖";
+    }
+    return `<tr><td>${fmt(xm,1)}</td><td>${measured.n[i]}</td><td>${fmt(measured.mean[i],3)}</td>
+      <td>${fmt(measured.sd[i],3)}</td><td>${fmt(mdl[i],3)}</td><td>${fmt(fitv,3)}</td>
+      <td>${eM>=0?"+":""}${fmt(eM,2)}%</td><td>${eF>=0?"+":""}${fmt(eF,2)}%</td><td>${band}</td></tr>`;
+  }).join("");
+
+  $("datatable").innerHTML =
+    `<thead><tr><th>x (mm)</th><th>n</th><th>평균 (Oe)</th><th>STDEV</th><th>모델</th>
+     <th>가중피팅</th><th>모델대비</th><th>피팅대비</th><th>공차밴드</th></tr></thead><tbody>${rows}</tbody>`;
+
+  const meanSd = measured.sd.reduce((a,b)=>a+b,0)/measured.sd.length;
+  $("datametrics").innerHTML = [
+    ["가중 피팅 기울기", fmt(wfit.a/100,3), "Oe/cm"],
+    ["가중 피팅 R²", fmt(wfit.r2,5), ""],
+    ["비가중 기울기", fmt(ufit.a/100,3), "Oe/cm"],
+    ["평균 STDEV", fmt(meanSd,3), "Oe"],
+    ["모델 대비 최대오차", fmt(maxErrM,2), "%"],
+    ["피팅선 대비 최대오차", fmt(maxErrF,2), "%"],
+  ].map(([k,v,u])=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");
+}
+
+/* ========================================================================
+   비선형 최소자승 (Levenberg–Marquardt)  —  실측 → 실제 코일 파라미터 역산
+   ===================================================================== */
+let fitResult = null;
+
+/* 선형계 풀이 (부분 피벗 가우스 소거) */
+function solveLin(A, b){
+  const n = b.length;
+  const M = A.map((r,i)=>[...r, b[i]]);
+  for(let c=0;c<n;c++){
+    let piv = c;
+    for(let r=c+1;r<n;r++) if(Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if(Math.abs(M[piv][c]) < 1e-14) return null;
+    [M[c],M[piv]] = [M[piv],M[c]];
+    for(let r=0;r<n;r++){
+      if(r===c) continue;
+      const f = M[r][c]/M[c][c];
+      for(let k=c;k<=n;k++) M[r][k] -= f*M[c][k];
+    }
+  }
+  return M.map((r,i)=> r[n]/r[i]);
+}
+/* 역행렬 (가우스-조던) */
+function invert(A){
+  const n = A.length;
+  const M = A.map((r,i)=>[...r, ...Array.from({length:n},(_,j)=> i===j?1:0)]);
+  for(let c=0;c<n;c++){
+    let piv=c;
+    for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r;
+    if(Math.abs(M[piv][c]) < 1e-14) return null;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    const d = M[c][c];
+    for(let k=0;k<2*n;k++) M[c][k] /= d;
+    for(let r=0;r<n;r++){
+      if(r===c) continue;
+      const f = M[r][c];
+      for(let k=0;k<2*n;k++) M[r][k] -= f*M[c][k];
+    }
+  }
+  return M.map(r=>r.slice(n));
+}
+
+/* 지정한 파라미터로 모델 곡선을 만드는 함수를 돌려준다 (x는 mm) */
+function modelMaker(S0, P){
+  const c1 = {...S0.c1, R:P.R1/1000};
+  const c2 = {...S0.c2, R:P.R2/1000, xc:P.d/1000};
+  const T1 = coilTurns(c1), T2 = coilTurns(c2);
+  const I = S0.I*P.k;
+  return xmm => {
+    const x = (xmm - P.x0)/1000;
+    return (H_pack(x,T1,c1.dir,I) + H_pack(x,T2,c2.dir,I))/OE;
+  };
+}
+
+const FITSPEC = [
+  {key:"k",  id:"fit_k",  label:"진폭 계수 k",       unit:"",   dec:4, design:S0=>1},
+  {key:"x0", id:"fit_x0", label:"프로브 영점 x₀",    unit:"mm", dec:3, design:S0=>0},
+  {key:"R1", id:"fit_R1", label:"코일1 유효 반경",   unit:"mm", dec:2, design:S0=>S0.c1.R*1000},
+  {key:"d",  id:"fit_d",  label:"코일 간 거리 d",    unit:"mm", dec:2, design:S0=>S0.d*1000},
+  {key:"R2", id:"fit_R2", label:"코일2 유효 반경",   unit:"mm", dec:2, design:S0=>S0.c2.R*1000},
+];
+
+function runFit(){
+  if(!measured || measured.x.length < 3){
+    $("fitnote").textContent = "측정 데이터가 3점 이상 필요합니다."; return;
+  }
+  const S0 = readState(); S0.span = S0.xb - S0.xa;
+  const active = FITSPEC.filter(f => $(f.id).checked);
+  const n = measured.x.length, m = active.length;
+  if(!m){ $("fitnote").textContent = "맞출 파라미터를 하나 이상 선택하세요."; return; }
+  if(n <= m){ $("fitnote").textContent = `파라미터 ${m}개를 맞추려면 측정점이 ${m+1}개 이상이어야 합니다.`; return; }
+
+  const design = {}; FITSPEC.forEach(f => design[f.key] = f.design(S0));
+  const weighted = $("fitw").value === "1";
+  const posSd = measured.sd.filter(v=>v>0);
+  const floor = posSd.length ? Math.min(...posSd)/2 : 1;
+  const w = measured.sd.map(s => weighted ? 1/Math.pow(s>0?s:floor,2) : 1);
+
+  const build = pv => { const P = {...design}; active.forEach((f,j)=> P[f.key] = pv[j]); return P; };
+  const curve = pv => { const f = modelMaker(S0, build(pv)); return measured.x.map(f); };
+  const chi2 = pv => { const r = curve(pv); let s=0;
+    for(let i=0;i<n;i++){ const e = measured.mean[i]-r[i]; s += w[i]*e*e; } return s; };
+
+  let p = active.map(f => design[f.key]);
+  let c = chi2(p), lambda = 1e-3, it = 0;
+  const MAXIT = Math.max(5, +$("fitit").value|0);
+  let converged = false;
+
+  const jacobian = pv => {
+    const J = Array.from({length:n}, ()=> new Array(m).fill(0));
+    for(let j=0;j<m;j++){
+      const h = Math.max(1e-6, Math.abs(pv[j])*1e-5);
+      const pp = pv.slice(); pp[j]+=h; const rp = curve(pp);
+      const pm = pv.slice(); pm[j]-=h; const rm = curve(pm);
+      for(let i=0;i<n;i++) J[i][j] = (rp[i]-rm[i])/(2*h);
+    }
+    return J;
+  };
+  const normal = (pv, J) => {
+    const r0 = curve(pv);
+    const A = Array.from({length:m},()=>new Array(m).fill(0)), b = new Array(m).fill(0);
+    for(let i=0;i<n;i++){
+      const e = measured.mean[i]-r0[i];
+      for(let j=0;j<m;j++){
+        b[j] += w[i]*e*J[i][j];
+        for(let k=0;k<m;k++) A[j][k] += w[i]*J[i][j]*J[i][k];
+      }
+    }
+    return {A,b};
+  };
+
+  for(it=0; it<MAXIT; it++){
+    const J = jacobian(p);
+    const {A,b} = normal(p, J);
+    let stepped = false;
+    for(let t=0;t<14;t++){
+      const Ad = A.map((row,j)=>row.map((v,k)=> k===j ? v*(1+lambda) : v));
+      const dp = solveLin(Ad, b);
+      if(!dp){ lambda *= 10; continue; }
+      const pn = p.map((v,j)=>v+dp[j]);
+      const cn = chi2(pn);
+      if(isFinite(cn) && cn < c){
+        const rel = (c-cn)/Math.max(c,1e-30);
+        p = pn; c = cn; lambda = Math.max(lambda/10, 1e-12); stepped = true;
+        if(rel < 1e-10){ converged = true; }
+        break;
+      }
+      lambda *= 10;
+      if(lambda > 1e13) break;
+    }
+    if(!stepped){ converged = true; break; }
+    if(converged) break;
+  }
+
+  // 공분산 → 표준오차
+  const Jf = jacobian(p);
+  const {A:Af} = normal(p, Jf);
+  const inv = invert(Af);
+  const dof = n - m;
+  const chi2red = c/dof;
+  const se = inv ? active.map((f,j)=> Math.sqrt(Math.max(0, inv[j][j]*chi2red))) : active.map(()=>NaN);
+
+  const P = build(p);
+  const fn = modelMaker(S0, P);
+  const resid = measured.x.map((x,i)=> measured.mean[i]-fn(x));
+  const rms = Math.sqrt(resid.reduce((a,b)=>a+b*b,0)/n);
+  const maxr = Math.max(...resid.map(Math.abs));
+
+  // 설계 모델 대비 개선폭
+  const base = modelMaker(S0, design);
+  const rmsBase = Math.sqrt(measured.x.reduce((a,x,i)=>a+Math.pow(measured.mean[i]-base(x),2),0)/n);
+
+  // 파라미터 간 상관계수 — 상관이 크면 개별 값을 믿으면 안 된다
+  let corr = null, worst = null;
+  if(inv){
+    corr = active.map((_,i)=> active.map((__,j)=>
+      inv[i][j]/Math.sqrt(Math.max(1e-300, inv[i][i]*inv[j][j]))));
+    for(let i=0;i<m;i++) for(let j=i+1;j<m;j++)
+      if(!worst || Math.abs(corr[i][j]) > Math.abs(worst.r))
+        worst = {r:corr[i][j], a:active[i].label, b:active[j].label};
+  }
+
+  fitResult = {P, design, active, se, chi2:c, chi2red, rms, maxr, rmsBase, dof, it,
+               converged, weighted, corr, worst};
+  renderFit();
+  render();
+}
+
+function renderFit(){
+  if(!fitResult){ $("fittable").innerHTML=""; return; }
+  const F = fitResult;
+  const rows = FITSPEC.map(f=>{
+    const isAct = F.active.some(a=>a.key===f.key);
+    const dv = F.design[f.key], fv = F.P[f.key];
+    const j = F.active.findIndex(a=>a.key===f.key);
+    const seTxt = isAct && isFinite(F.se[j]) ? "± "+F.se[j].toFixed(f.dec) : "—";
+    const diff = fv - dv;
+    const relTxt = (f.key==="k") ? ((fv-1)*100).toFixed(2)+" %"
+                 : (Math.abs(dv)>1e-9 ? (diff/dv*100).toFixed(2)+" %" : "—");
+    return `<tr style="${isAct?"":"opacity:.45"}">
+      <td>${f.label}${isAct?"":" <span style='font-size:10px'>(고정)</span>"}</td>
+      <td>${dv.toFixed(f.dec)}</td>
+      <td><b>${fv.toFixed(f.dec)}</b></td>
+      <td>${seTxt}</td>
+      <td>${diff>=0?"+":""}${diff.toFixed(f.dec)}</td>
+      <td>${relTxt}</td>
+      <td>${f.unit}</td></tr>`;
+  }).join("");
+  $("fittable").innerHTML =
+    `<thead><tr><th>파라미터</th><th>설계값</th><th>피팅값</th><th>표준오차</th><th>차이</th><th>상대</th><th>단위</th></tr></thead><tbody>${rows}</tbody>`;
+
+  const improved = (1 - F.rms/F.rmsBase)*100;
+  $("fitnote").innerHTML =
+    `반복 ${F.it+1}회 · ${F.converged?"수렴":"최대 반복 도달"} · ${F.weighted?"STDEV 가중":"비가중"} · 자유도 ${F.dof}<br>`+
+    `잔차 RMS <b>${fmt(F.rms,4)} Oe</b> (최대 ${fmt(F.maxr,4)} Oe) — 설계값 그대로 쓸 때의 ${fmt(F.rmsBase,4)} Oe 에서 <b>${fmt(improved,1)}%</b> 줄었습니다.<br>`+
+    `환산 카이제곱 χ²/ν = <b>${fmt(F.chi2red,3)}</b> — 1 근처면 모델이 측정 산포 수준까지 설명한 것이고, `+
+    `1보다 훨씬 크면 아직 모델에 없는 계통 오차(지자기, 발열, 코일 비원형 등)가 남아 있다는 뜻입니다. `+
+    `1보다 훨씬 작으면 STDEV를 과대평가했거나 파라미터를 너무 많이 풀어준 것입니다.` +
+    (F.worst ? `<br><b style="color:${Math.abs(F.worst.r)>0.9?"var(--bad)":Math.abs(F.worst.r)>0.7?"var(--warn)":"var(--good)"}">`+
+      `최대 상관 |ρ| = ${Math.abs(F.worst.r).toFixed(3)}</b> (${F.worst.a} ↔ ${F.worst.b})` +
+      (Math.abs(F.worst.r) > 0.9
+        ? ` — <b>너무 높습니다.</b> 이 두 값은 서로 상쇄되어 여러 조합이 똑같이 잘 맞으므로, 개별 값을 "측정된 실제 값"이라고 보고서에 쓰면 안 됩니다. 하나를 고정하고 다시 맞추세요.`
+        : Math.abs(F.worst.r) > 0.7
+        ? ` — 다소 높습니다. 개별 값보다 “둘을 합친 효과”로 해석하세요.`
+        : ` — 낮습니다. 개별 값을 독립적으로 해석해도 됩니다.`) : "") +
+    `<br><span style="color:var(--muted)">표준오차는 (JᵀWJ)⁻¹ 의 대각 성분에 χ²/ν 를 곱해 구했습니다. `+
+    `진폭 계수 k, 프로브 영점 x₀, 반경은 서로 강하게 상관되므로 <b>한 번에 2개까지만</b> 푸는 것을 권합니다 — `+
+    `하나씩 늘려가며 잔차 RMS가 의미 있게 줄어드는지 확인하세요.</span>`;
+}
+
+/* ========================================================================
+   기타 UI
+   ===================================================================== */
+function setDir(p, v){
+  dirState[p] = v;
+  $("dir"+p).querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", (+b.dataset.v===v)+""));
+}
+function summary(){
+  const p = v => v.toFixed(1);
+  return `[구배 코일 설계 요약]
+전류 ${S.I} A · 선경 ${(S.dw*1000).toFixed(1)} mm
+코일1: R ${p(S.c1.R*1000)} mm, ${S.c1.m}턴×${S.c1.n}층(마지막 ${S.c1.last}) = ${E.N1}턴, ${S.c1.dir>0?"정":"역"}방향
+       권선 ${p(S.c1.m*S.c1.dw*1000)}(폭)×${p(S.c1.n*S.c1.dw*1000)}(두께) mm, ${fmt(E.L1,1)} m, ${fmt(E.R1o,2)} Ω
+코일2: R ${p(S.c2.R*1000)} mm, ${S.c2.m}턴×${S.c2.n}층(마지막 ${S.c2.last}) = ${E.N2}턴, ${S.c2.dir>0?"정":"역"}방향
+       권선 ${p(S.c2.m*S.c2.dw*1000)}(폭)×${p(S.c2.n*S.c2.dw*1000)}(두께) mm, ${fmt(E.L2,1)} m, ${fmt(E.R2o,2)} Ω
+중심간 거리 d = ${p(S.d*1000)} mm
+측정창 ${p(S.xa*1000)} → ${p(S.xb*1000)} mm, 목표 ${S.h1} → ${S.h2} Oe
+최대편차 ${fmt(E.maxDev,3)} Oe (${fmt(E.maxDev/Math.abs(S.h1-S.h2)*100,2)}%), 비선형성 ${fmt(E.nonlin,3)} Oe
+기울기 ${fmt(E.fit.a/100,2)} Oe/cm
+총 저항 ${fmt(E.Rtot,2)} Ω · 전압 ${fmt(E.V,2)} V · 발열 ${fmt(E.P,2)} W · 구리선 ${fmt(E.L1+E.L2,1)} m
+코일1 단독 중심장 ${fmt(E.h1solo,2)} Oe` + (E.tap && !E.tap.short ? ` (25 Oe 탭: ${E.tap.k}턴 → ${fmt(E.tap.h,2)} Oe)` : "");
+}
+async function copy(text, btn){
+  try{ await navigator.clipboard.writeText(text); const o=btn.textContent; btn.textContent="복사됨"; setTimeout(()=>btn.textContent=o,1200); }
+  catch(e){ btn.textContent="복사 실패"; setTimeout(()=>btn.textContent="설계 요약 복사",1400); }
+}
+
+/* ---- 이벤트 ---- */
+["cur","dw","dist","pmax","R1","m1","n1","l1","R2","m2","n2","l2","xa","xb","h1","h2"]
+  .forEach(id => $(id).addEventListener("input", render));
+["showthin","showparts","showmc","showmeas"].forEach(id => $(id).addEventListener("change", render));
+[1,2].forEach(p => $("dir"+p).addEventListener("click", ev=>{
+  const b = ev.target.closest("button"); if(!b) return; setDir(p, +b.dataset.v); render();
+}));
+document.querySelectorAll(".tabs button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll(".tabs button").forEach(o=>o.setAttribute("aria-selected", (o===b)+""));
+    ["calc","opt","sens","data"].forEach(t => $("tab-"+t).hidden = (t !== b.dataset.tab));
+    if(b.dataset.tab === "sens") sensitivity();
+  });
+});
+$("runopt").addEventListener("click", ()=>{ $("optlog").textContent="계산 중…"; setTimeout(runOptimize, 30); });
+$("applyopt").addEventListener("click", applyOpt);
+$("runmc").addEventListener("click", runMC);
+["tR","tN","td","tI","tx"].forEach(id => $(id).addEventListener("input", ()=>{ if(!$("tab-sens").hidden) sensitivity(); }));
+$("parsebtn").addEventListener("click", parseData);
+$("clearbtn").addEventListener("click", ()=>{ $("raw").value=""; measured=null; $("datanote").textContent="입력이 비어 있습니다."; $("datatable").innerHTML=""; $("datametrics").innerHTML=""; render(); });
+$("copytable").addEventListener("click", ev=>{
+  if(!measured) return;
+  const head = "x_mm\tn\tmean_Oe\tstdev_Oe\tmodel_Oe";
+  const lines = measured.x.map((xm,i)=>
+    [xm, measured.n[i], measured.mean[i].toFixed(4), measured.sd[i].toFixed(4), E.total(xm/1000).toFixed(4)].join("\t"));
+  copy([head,...lines].join("\n"), ev.target);
+});
+$("copysum").addEventListener("click", ev => copy(summary(), ev.target));
+$("runfit").addEventListener("click", ()=>{ $("fitnote").textContent="피팅 중…"; setTimeout(runFit, 20); });
+$("clearfit").addEventListener("click", ()=>{ fitResult=null; $("fittable").innerHTML="";
+  $("fitnote").textContent="피팅 결과를 지웠습니다."; render(); });
+$("copyfit").addEventListener("click", ev=>{
+  if(!fitResult) return;
+  const F = fitResult;
+  const lines = ["[비선형 최소자승 피팅 결과]",
+    `가중 ${F.weighted?"1/σ²":"없음"} · 자유도 ${F.dof} · χ²/ν ${F.chi2red.toFixed(3)}`,
+    `잔차 RMS ${F.rms.toFixed(4)} Oe (설계값 기준 ${F.rmsBase.toFixed(4)} Oe)`,
+    "파라미터\t설계값\t피팅값\t표준오차"];
+  FITSPEC.forEach(f=>{
+    const j = F.active.findIndex(a=>a.key===f.key);
+    lines.push([f.label, F.design[f.key].toFixed(f.dec), F.P[f.key].toFixed(f.dec),
+      j>=0 && isFinite(F.se[j]) ? "±"+F.se[j].toFixed(f.dec) : "고정"].join("\t"));
+  });
+  copy(lines.join("\n"), ev.target);
+});
+$("themebtn").addEventListener("click", ()=>{
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  render(); if(!$("tab-sens").hidden) sensitivity();
+});
+
+/* ---- 시작 ---- */
+buildOptTable();
+render();
+parseData();
+</script>
+</body>
+</html>
