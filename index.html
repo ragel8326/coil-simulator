@@ -744,8 +744,8 @@
                 <div class="f"><label for="dist">Coil separation d (mm)</label>
                   <input type="number" id="dist" value="56.5" step="0.5">
                 </div>
-                <div class="f"><label for="pmax">Power limit (W)</label>
-                  <input type="number" id="pmax" value="5" step="0.5" min="0.1">
+                <div class="f"><label for="pmax" title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">Power limit (W) — assumed, not from spec</label>
+                  <input type="number" id="pmax" value="5" step="0.5" min="0.1" title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">
                 </div>
               </div>
             </div>
@@ -790,16 +790,15 @@
             <div class="grp">
               <div class="grp-h"><b>Measurement Window &amp; Target Line</b></div>
               <div class="fields">
-                <div class="f"><label for="xa">Start x (mm)</label><input type="number" id="xa" value="14.2" step="0.1">
-                </div>
-                <div class="f"><label for="xb">End x (mm)</label><input type="number" id="xb" value="39.2" step="0.1">
+                <div class="f full"><label>Measurement window (fixed = 0 → d)</label>
+                  <input type="text" id="windisp" value="" readonly>
                 </div>
                 <div class="f"><label for="h1">Target at start (Oe)</label><input type="number" id="h1" value="25" step="0.5">
                 </div>
                 <div class="f"><label for="h2">Target at end (Oe)</label><input type="number" id="h2" value="10" step="0.5">
                 </div>
               </div>
-              <p class="note" style="margin:9px 0 0">x = 0 is the <b>coil 1 center</b>; x = d is the coil 2 center.</p>
+              <p class="note" style="margin:9px 0 0">x = 0 is the <b>coil 1 center</b>; x = d is the coil 2 center. The window always spans the full separation between the coils — it is not independently adjustable.</p>
             </div>
 
           </div>
@@ -1093,7 +1092,9 @@
       c1.last = Math.min(c1.last, c1.m); c2.last = Math.min(c2.last, c2.m);
       return {
         I: parseFloat($("cur").value) || 1, dw, d, c1, c2,
-        xa: parseFloat($("xa").value) / 1000, xb: parseFloat($("xb").value) / 1000,
+        // The comparison window is always the segment between the two coil
+        // centers (x=0 to x=d) — it is not an independent, user-set value.
+        xa: 0, xb: d,
         h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
         pmax: parseFloat($("pmax").value) || 5
       };
@@ -1135,17 +1136,22 @@
       const R1o = resistance(L1, S.dw), R2o = resistance(L2, S.dw);
       const Rtot = R1o + R2o, P = S.I * S.I * Rtot, V = S.I * Rtot;
 
-      // 코일1 단독 중심장 + 25 Oe 탭 위치, 코일2 단독 중심장
+      // Task 1: coil 1 driven alone, field at its own center (dir hardcoded to +1 —
+      // this checks magnitude only, independent of the winding-direction setting).
       const h1solo = H_pack(S.c1.xc, T1, 1, S.I) / OE;
-      const h2solo = H_pack(S.c2.xc, T2, 1, S.I) / OE;
       const tap = findTap(T1, S.I, 25);
+
+      // Task 3: coils driven together in series — combined field at x=0 (coil 1
+      // center) and x=d (coil 2 center). Since the window is always [0, d],
+      // these are just the first/last samples of the window sweep above.
+      const hAt0 = wm[0], hAtD = wm[wm.length - 1];
 
       // 변곡점 (측정창 안에서 2계 미분 = 0)
       const infl = findInflection(total, xa, xb);
 
       return {
         T1, T2, total, thin, wx, wm, wt, wthin, maxDev, rmsDev, nonlin, fit, thinDiffPct,
-        L1, L2, R1o, R2o, Rtot, P, V, h1solo, h2solo, tap, infl,
+        L1, L2, R1o, R2o, Rtot, P, V, h1solo, hAt0, hAtD, tap, infl,
         N1: turnCount(S.c1), N2: turnCount(S.c2), span
       };
     }
@@ -1458,18 +1464,29 @@
       ).join("");
 
       const chips = [];
+      // Task 1: a standalone solenoid must give 25±1.0 Oe at its own center.
       const ok25 = Math.abs(E.h1solo - 25) <= 1.0;
-      chips.push([ok25 ? "ok" : "warn", `Requirement 1 · coil 1 alone ${fmt(E.h1solo, 2)} Oe`,
+      chips.push([ok25 ? "ok" : "warn", `Solenoid alone (task 1) · ${fmt(E.h1solo, 2)} Oe`,
       ok25 ? "Met (25±1.0)" : "Not met (25±1.0)"]);
-      const ok10 = Math.abs(E.h2solo - 10) <= 1.0;
-      chips.push([ok10 ? "ok" : "warn", `Requirement 2 · coil 2 alone ${fmt(E.h2solo, 2)} Oe`,
-      ok10 ? "Met (10±1.0)" : "Not met (10±1.0)"]);
+      // Task 3: coils in series must give 25 Oe at x=0 and 10 Oe at x=d.
+      // The ±1.0 Oe tolerance is only stated in the PDF for the 25 Oe end;
+      // the 10 Oe end has no stated tolerance, so we assume the same ±1.0
+      // here for consistency (not explicitly specified in the project PDF).
+      const okStart = Math.abs(E.hAt0 - 25) <= 1.0;
+      chips.push([okStart ? "ok" : "warn", `Combined field, x=0 (task 3) · ${fmt(E.hAt0, 2)} Oe`,
+      okStart ? "Met (25±1.0)" : "Not met (25±1.0)"]);
+      const okEnd = Math.abs(E.hAtD - 10) <= 1.0;
+      chips.push([okEnd ? "ok" : "warn", `Combined field, x=d (task 3) · ${fmt(E.hAtD, 2)} Oe`,
+      okEnd ? "Met (10±1.0, assumed)" : "Not met (10±1.0, assumed)"]);
       if (!ok25 && E.tap && !E.tap.short)
         chips.push(["ok", `Tap-off`, `tap at turn ${E.tap.k} gives ${fmt(E.tap.h, 2)} Oe`]);
       chips.push([S.I <= 1.001 ? "ok" : "bad", `Current ${fmt(S.I, 2)} A`, S.I <= 1.001 ? "≤ 1 A" : "> 1 A"]);
+      // Power limit is a self-imposed design margin, not a numeric spec from the
+      // project PDF (which only says to keep current around ~1 A) — shown as a
+      // neutral "info" chip rather than a pass/fail requirement chip.
       const pOk = E.P <= S.pmax;
-      chips.push([pOk ? "ok" : "bad", `Power ${fmt(E.P, 2)} W`, pOk ? `within ${S.pmax} W limit` : `exceeds ${S.pmax} W limit`]);
-      chips.push(["ok", `Window ${fmt(S.span * 1000, 1)} mm`, `${fmt(S.xa * 1000, 1)} → ${fmt(S.xb * 1000, 1)} mm`]);
+      chips.push(["info", `Power ${fmt(E.P, 2)} W`, pOk ? `within assumed ${S.pmax} W limit` : `exceeds assumed ${S.pmax} W limit`]);
+      chips.push(["info", `Window ${fmt(S.span * 1000, 1)} mm`, `${fmt(S.xa * 1000, 1)} → ${fmt(S.xb * 1000, 1)} mm`]);
       chips.push(["info", `vs thin-coil approx.`, `error ${fmt(E.thinDiffPct, 2)}%`]);
       $("chips").innerHTML = chips.map(([c, a, b]) => `<span class="chip ${c}"><b>${a}</b>${b}</span>`).join("");
 
@@ -1498,6 +1515,7 @@
       S = readState();
       if (!(S.xb > S.xa)) { S.xb = S.xa + 0.001; }
       S.span = S.xb - S.xa;
+      $("windisp").value = `0 → ${fmt(S.xb * 1000, 1)} mm`;
       E = evaluate(S);
       drawMain(S, E); drawResid(S, E); renderMetrics(S, E);
       if (measured) renderData();
@@ -1514,14 +1532,12 @@
       { k: "m2", label: "Coil 2 turns/layer", min: 1, max: 40, int: true },
       { k: "n2", label: "Coil 2 layers", min: 1, max: 12, int: true },
       { k: "d", label: "Coil separation (mm)", min: 30, max: 140, int: false },
-      { k: "xa", label: "Window start (mm)", min: 0, max: 80, int: false },
-      { k: "xb", label: "Window end (mm)", min: 10, max: 140, int: false },
     ];
     function buildOptTable() {
       const tb = $("optvars").querySelector("tbody");
       tb.innerHTML = OPTVARS.map(v => `<tr>
     <td>${v.label}</td>
-    <td><input type="checkbox" id="ov_${v.k}" ${["R1", "m1", "n1", "d", "xa", "xb", "m2"].includes(v.k) ? "checked" : ""}></td>
+    <td><input type="checkbox" id="ov_${v.k}" ${["R1", "m1", "n1", "d", "m2"].includes(v.k) ? "checked" : ""}></td>
     <td><input type="number" id="ol_${v.k}" value="${v.min}" step="${v.int ? 1 : 0.5}"></td>
     <td><input type="number" id="oh_${v.k}" value="${v.max}" step="${v.int ? 1 : 0.5}"></td>
   </tr>`).join("");
@@ -1536,9 +1552,9 @@
       const dw = S0.dw;
       const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw, xc: 0, dir: S0.c1.dir };
       const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.max(1, p.m2), dw, xc: p.d / 1000, dir: dir2 };
-      const xa = p.xa / 1000, xb = p.xb / 1000;
+      // Window is always [0, d] — the segment between the two coil centers — not a free variable.
+      const xa = 0, xb = p.d / 1000;
       if (!(xb - xa >= minWin / 1000)) return 1e6;
-      if (xb > p.d / 1000 + 0.02 || xa < -0.02) return 1e6;
       const T1 = coilTurns(c1), T2 = coilTurns(c2);
       const NP = 31; let maxd = 0, sse = 0;
       for (let i = 0; i < NP; i++) {
@@ -1579,7 +1595,7 @@
         const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw, xc: 0, dir: S0.c1.dir };
         const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.max(1, p.m2), dw, xc: p.d / 1000, dir: bestDir };
         const T1 = coilTurns(c1), T2 = coilTurns(c2);
-        const xa = p.xa / 1000, xb = p.xb / 1000;
+        const xa = 0, xb = p.d / 1000;
         const e = new Array(NP);
         for (let i = 0; i < NP; i++) {
           const u = i / (NP - 1), x = xa + (xb - xa) * u;
@@ -1659,7 +1675,7 @@
       if (!act.length) { $("optlog").textContent = "Select at least one variable to search."; return; }
       const base = {
         R1: S0.c1.R * 1000, m1: S0.c1.m, n1: S0.c1.n, R2: S0.c2.R * 1000,
-        m2: S0.c2.m, n2: S0.c2.n, d: S0.d * 1000, xa: S0.xa * 1000, xb: S0.xb * 1000
+        m2: S0.c2.m, n2: S0.c2.n, d: S0.d * 1000
       };
       const lo = act.map(v => +$("ol_" + v.k).value), hi = act.map(v => +$("oh_" + v.k).value);
       for (let j = 0; j < lo.length; j++) if (hi[j] < lo[j]) { const t = lo[j]; lo[j] = hi[j]; hi[j] = t; }
@@ -1733,7 +1749,7 @@ Coil 1 : R = ${p.R1.toFixed(1)} mm,  ${p.m1} turns × ${p.n1} layers = ${N1} tur
 Coil 2 : R = ${p.R2.toFixed(1)} mm,  ${p.m2} turns × ${p.n2} layers = ${N2} turns, ${bestDir > 0 ? "Forward +" : "Reverse −"}
          winding ${(p.m2 * dwmm).toFixed(1)} (width) × ${(p.n2 * dwmm).toFixed(1)} (depth) mm
 Separation d = ${p.d.toFixed(1)} mm
-Window = ${p.xa.toFixed(1)} → ${p.xb.toFixed(1)} mm  (length ${(p.xb - p.xa).toFixed(1)} mm)
+Window = 0.0 → ${p.d.toFixed(1)} mm  (fixed = 0 → d)
 
 Click "Apply result" to update the parameters on the left.`;
       };
@@ -1770,7 +1786,6 @@ Click "Apply result" to update the parameters on the left.`;
       $("R1").value = p.R1.toFixed(1); $("m1").value = p.m1; $("n1").value = p.n1; $("l1").value = p.m1;
       $("R2").value = p.R2.toFixed(1); $("m2").value = p.m2; $("n2").value = p.n2; $("l2").value = p.m2;
       $("dist").value = p.d.toFixed(1);
-      $("xa").value = p.xa.toFixed(1); $("xb").value = p.xb.toFixed(1);
       setDir(2, optBest.dir2);
       render();
     }
@@ -2198,7 +2213,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe` + (E.tap && !E.tap.short ? ` 
     }
 
     /* ---- 이벤트 ---- */
-    ["cur", "dw", "dist", "pmax", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "xa", "xb", "h1", "h2"]
+    ["cur", "dw", "dist", "pmax", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
       .forEach(id => $(id).addEventListener("input", render));
     ["showparts", "showmc", "showmeas"].forEach(id => $(id).addEventListener("change", render));
     [1, 2].forEach(p => $("dir" + p).addEventListener("click", ev => {
