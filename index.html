@@ -891,6 +891,8 @@
                 </div>
               </div>
 
+              <label class="row" style="gap:6px;margin-top:12px;font-size:12px"><input type="checkbox" id="reqSolo25"> <span>Also require coil 1 alone = 25 ± 1.0 Oe (Task 1)</span></label>
+
               <div class="row" style="margin-top:14px">
                 <button class="act" type="button" id="runopt">Run optimization</button>
                 <button class="act ghost" type="button" id="applyopt" disabled>Apply result</button>
@@ -1566,6 +1568,10 @@
       let v = mode === "max" ? maxd : sse / NP;
       const P = S0.I * S0.I * (resistance(wireLength(T1), dw) + resistance(wireLength(T2), dw));
       if (P > S0.pmax) v += 2 * (P - S0.pmax);
+      // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
+      const h1alone = H_pack(0, T1, c1.dir, S0.I) / OE;
+      const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
+      if (S0.reqSolo25) v += 2 * solo25Excess;
       return v;
     }
 
@@ -1671,6 +1677,7 @@
     function runOptimize() {
       if (optRunning) return;
       const S0 = readState();
+      S0.reqSolo25 = $("reqSolo25").checked;
       const act = OPTVARS.filter(v => $("ov_" + v.k).checked);
       if (!act.length) { $("optlog").textContent = "Select at least one variable to search."; return; }
       const base = {
@@ -1739,10 +1746,16 @@
         $("applyopt").disabled = false;
         const N1 = p.m1 * p.n1, N2 = p.m2 * p.n2;
         const dwmm = S0.dw * 1000;
+        let soloLine = "";
+        if (S0.reqSolo25) {
+          const c1f = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw: S0.dw, xc: 0, dir: S0.c1.dir };
+          const h1aloneFinal = H_pack(0, coilTurns(c1f), c1f.dir, S0.I) / OE;
+          soloLine = `\nCoil 1 alone: ${h1aloneFinal.toFixed(2)} Oe (target 25±1.0)`;
+        }
         $("optlog").textContent =
           `Done.  ${mode === "max" ? "Max deviation" : "MSE"} = ${mode === "max" ? bestF.toFixed(4) + " Oe" : bestF.toExponential(4)}
 Evaluations ${evals.toLocaleString()} · elapsed ${((performance.now() - t0) / 1000).toFixed(1)} s
-${refineLine}
+${refineLine}${soloLine}
 
 Coil 1 : R = ${p.R1.toFixed(1)} mm,  ${p.m1} turns × ${p.n1} layers = ${N1} turns
          winding ${(p.m1 * dwmm).toFixed(1)} (width) × ${(p.n1 * dwmm).toFixed(1)} (depth) mm
