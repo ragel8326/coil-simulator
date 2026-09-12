@@ -1730,8 +1730,14 @@
       const mode = $("objsel").value, minWin = +$("minwin").value;
       const dirs = $("dir2sel").value === "auto" ? [1, -1] : [S0.c2.dir];
 
-      const D = act.length, NPOP = clamp(6 * D, 24, 60), GENS = Math.max(20, +$("gens").value | 0);
-      const F = 0.7, CR = 0.9;
+      const D = act.length, NPOP = clamp(8 * D, 24, 60), GENS = Math.max(20, +$("gens").value | 0);
+      // F=0.5, CR=1.0, population=8×D — chosen from a one-factor-at-a-time sweep
+      // (F in [0.3,0.5,0.7,0.9,1.0], CR in [0.1..1.0], pop mult in [4,6,8,10,12],
+      // 30 trials each, 150 generations, default coil design) that beat the
+      // paper-default-adjacent settings (F=0.7, CR=0.9, 6×D) on both mean and
+      // spread of the final max-deviation. Not a full grid search — see the
+      // explainer doc for the caveat.
+      const F = 0.5, CR = 1.0;
       let pop, fit, di = 0, g = 0, evals = 0;
       let bestX = null, bestF = Infinity, bestDir = dirs[0];
       const t0 = performance.now();
