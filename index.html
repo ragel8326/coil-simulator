@@ -743,12 +743,6 @@
                 <div class="f"><label for="dist">Coil separation d (mm)</label>
                   <input type="number" id="dist" value="56.5" step="0.5">
                 </div>
-                <div class="f"><label for="pmax"
-                    title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">Power
-                    limit (W) — assumed, not from spec</label>
-                  <input type="number" id="pmax" value="5" step="0.5" min="0.1"
-                    title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">
-                </div>
               </div>
             </div>
 
@@ -1127,8 +1121,7 @@
         // The comparison window is always the segment between the two coil
         // centers (x=0 to x=d) — it is not an independent, user-set value.
         xa: 0, xb: d,
-        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
-        pmax: parseFloat($("pmax").value) || 5
+        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value)
       };
     }
 
@@ -1171,7 +1164,6 @@
       // Task 1: coil 1 driven alone, field at its own center (dir hardcoded to +1 —
       // this checks magnitude only, independent of the winding-direction setting).
       const h1solo = H_pack(S.c1.xc, T1, 1, S.I) / OE;
-      const tap = findTap(T1, S.I, 25);
 
       // Task 3: coils driven together in series — combined field at x=0 (coil 1
       // center) and x=d (coil 2 center). Since the window is always [0, d],
@@ -1183,7 +1175,7 @@
 
       return {
         T1, T2, total, thin, wx, wm, wt, wthin, maxDev, rmsDev, nonlin, fit, thinDiffPct,
-        L1, L2, R1o, R2o, Rtot, P, V, h1solo, hAt0, hAtD, tap, infl,
+        L1, L2, R1o, R2o, Rtot, P, V, h1solo, hAt0, hAtD, infl,
         N1: turnCount(S.c1), N2: turnCount(S.c2), span
       };
     }
@@ -1205,22 +1197,6 @@
         ssr += w * Math.pow(ys[i] - (a * xs[i] + b), 2); sst += w * Math.pow(ys[i] - ym, 2);
       }
       return { a, b, r2: sst === 0 ? 1 : 1 - ssr / sst };
-    }
-
-    /* 이분법: 첫 k턴만 썼을 때 중심장이 target Oe가 되는 k */
-    function findTap(T, I, target) {
-      const N = T.rs.length;
-      const hAt = k => {
-        let s = 0;
-        for (let i = 0; i < k; i++) { const r = T.rs[i], dx = -T.xs[i], q = r * r + dx * dx; s += r * r / (q * Math.sqrt(q)); }
-        return I * s / 2 / OE;
-      };
-      if (N === 0) return null;
-      if (hAt(N) < target) return { k: N, h: hAt(N), short: true };
-      let lo = 1, hi = N;
-      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (hAt(mid) < target) lo = mid; else hi = mid; }
-      const a = hAt(lo), b = hAt(hi);
-      return Math.abs(a - target) < Math.abs(b - target) ? { k: lo, h: a } : { k: hi, h: b };
     }
 
     /* 수치 2계 미분으로 변곡점 찾기 */
@@ -1521,14 +1497,7 @@
       const okEnd = Math.abs(E.hAtD - 10) <= 1.0;
       chips.push([okEnd ? "ok" : "warn", `Combined field, x=d (task 3) · ${fmt(E.hAtD, 2)} Oe`,
       okEnd ? "Met (10±1.0, assumed)" : "Not met (10±1.0, assumed)"]);
-      if (!ok25 && E.tap && !E.tap.short)
-        chips.push(["ok", `Tap-off`, `tap at turn ${E.tap.k} gives ${fmt(E.tap.h, 2)} Oe`]);
       chips.push([S.I <= 1.001 ? "ok" : "bad", `Current ${fmt(S.I, 2)} A`, S.I <= 1.001 ? "≤ 1 A" : "> 1 A"]);
-      // Power limit is a self-imposed design margin, not a numeric spec from the
-      // project PDF (which only says to keep current around ~1 A) — shown as a
-      // neutral "info" chip rather than a pass/fail requirement chip.
-      const pOk = E.P <= S.pmax;
-      chips.push(["info", `Power ${fmt(E.P, 2)} W`, pOk ? `within assumed ${S.pmax} W limit` : `exceeds assumed ${S.pmax} W limit`]);
       chips.push(["info", `Window ${fmt(S.span * 1000, 1)} mm`, `${fmt(S.xa * 1000, 1)} → ${fmt(S.xb * 1000, 1)} mm`]);
       chips.push(["info", `vs thin-coil approx.`, `error ${fmt(E.thinDiffPct, 2)}%`]);
       $("chips").innerHTML = chips.map(([c, a, b]) => `<span class="chip ${c}"><b>${a}</b>${b}</span>`).join("");
@@ -1607,8 +1576,6 @@
         const e = h - t; sse += e * e; if (Math.abs(e) > maxd) maxd = Math.abs(e);
       }
       let v = mode === "max" ? maxd : sse / NP;
-      const P = S0.I * S0.I * (resistance(wireLength(T1), dw) + resistance(wireLength(T2), dw));
-      if (P > S0.pmax) v += 2 * (P - S0.pmax);
       // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
       const h1alone = H_pack(0, T1, c1.dir, S0.I) / OE;
       const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
@@ -2265,7 +2232,7 @@ Window ${p(S.xa * 1000)} → ${p(S.xb * 1000)} mm, target ${S.h1} → ${S.h2} Oe
 Max deviation ${fmt(E.maxDev, 3)} Oe (${fmt(E.maxDev / Math.abs(S.h1 - S.h2) * 100, 2)}%), nonlinearity ${fmt(E.nonlin, 3)} Oe
 Slope ${fmt(E.fit.a / 100, 2)} Oe/cm
 Total resistance ${fmt(E.Rtot, 2)} Ω · voltage ${fmt(E.V, 2)} V · power ${fmt(E.P, 2)} W · copper wire ${fmt(E.L1 + E.L2, 1)} m
-Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe` + (E.tap && !E.tap.short ? ` (25 Oe tap: turn ${E.tap.k} → ${fmt(E.tap.h, 2)} Oe)` : "");
+Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
     }
     async function copy(text, btn) {
       try { await navigator.clipboard.writeText(text); const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 1200); }
@@ -2273,7 +2240,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe` + (E.tap && !E.tap.short ? ` 
     }
 
     /* ---- 이벤트 ---- */
-    ["cur", "dw", "dist", "pmax", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
+    ["cur", "dw", "dist", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
       .forEach(id => $(id).addEventListener("input", render));
     ["showparts", "showmc", "showmeas", "showthin"].forEach(id => $(id).addEventListener("change", render));
     [1, 2].forEach(p => $("dir" + p).addEventListener("click", ev => {
