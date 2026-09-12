@@ -1025,7 +1025,7 @@
                 </div>
                 <div class="f"><label for="fitw">Weighting</label>
                   <select id="fitw">
-                    <option value="1" selected>STDEV weighted (1/&sigma;&sup2;)</option>
+                    <option value="1" selected>STDEV weighted (n/&sigma;&sup2;)</option>
                     <option value="0">Unweighted</option>
                   </select>
                   <label for="fitit" style="margin-top:9px">Max iterations</label>
@@ -1986,10 +1986,11 @@ Click "Apply result" to update the parameters on the left.`;
       if (!measured) return;
       const xs = measured.x.map(v => v / 1000);
       const mdl = xs.map(x => E.total(x));
-      // STDEV를 가중치로 쓴 최소자승 (sd=0 이면 최소 sd의 절반으로 대체)
+      // 평균의 가중치 = n / sd²  (반복측정 평균의 표준오차는 sd/√n이므로)
+      // sd=0 이면 최소 sd의 절반으로 대체
       const posSd = measured.sd.filter(v => v > 0);
       const floor = posSd.length ? Math.min(...posSd) / 2 : 1;
-      const ws = measured.sd.map(s => 1 / Math.pow(s > 0 ? s : floor, 2));
+      const ws = measured.sd.map((s, i) => measured.n[i] / Math.pow(s > 0 ? s : floor, 2));
       const wfit = lsq(xs, measured.mean, ws);
       const ufit = lsq(xs, measured.mean);
 
@@ -2101,7 +2102,7 @@ Click "Apply result" to update the parameters on the left.`;
       const weighted = $("fitw").value === "1";
       const posSd = measured.sd.filter(v => v > 0);
       const floor = posSd.length ? Math.min(...posSd) / 2 : 1;
-      const w = measured.sd.map(s => weighted ? 1 / Math.pow(s > 0 ? s : floor, 2) : 1);
+      const w = measured.sd.map((s, i) => weighted ? measured.n[i] / Math.pow(s > 0 ? s : floor, 2) : 1);
 
       const build = pv => { const P = { ...design }; active.forEach((f, j) => P[f.key] = pv[j]); return P; };
       const curve = pv => { const f = modelMaker(S0, build(pv)); return measured.x.map(f); };
