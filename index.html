@@ -1589,7 +1589,7 @@
       // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
       const h1alone = H_pack(0, T1, c1.dir, S0.I) / OE;
       const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
-      if (S0.reqSolo25) v += 2 * solo25Excess;
+      if (S0.reqSolo25 && solo25Excess > 0) return 1e6;
       return v;
     }
 
