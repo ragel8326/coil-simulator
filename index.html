@@ -1473,6 +1473,8 @@
       const dwmm = S.dw * 1000;
       const wireArea = Math.PI * (dwmm / 2) * (dwmm / 2); // mm²
       const currentDensity = S.I / wireArea; // A/mm²
+      // 단위길이당 발열량 = I² × (도선 1m당 저항). resistance(1, S.dw)로 1m당 저항[Ω/m]을 구한다.
+      const wattsPerMeter = S.I * S.I * resistance(1, S.dw); // W/m
       const items = [
         ["Max deviation", fmt(E.maxDev, 3), "Oe  ·  " + fmt(pct(E.maxDev), 2) + "%", true],
         ["RMS deviation", fmt(E.rmsDev, 3), "Oe"],
@@ -1486,6 +1488,7 @@
         ["Power dissipation", fmt(E.P, 2), "W"],
         ["Copper wire length", fmt(E.L1 + E.L2, 1), "m"],
         ["Current density", fmt(currentDensity, 2), "A/mm²  ·  limit " + fmt(S.jsafe, 1)],
+        ["Heat per unit length", fmt(wattsPerMeter, 3), "W/m"],
       ];
       $("metrics").innerHTML = items.map(([k, v, u, hi]) =>
         `<div class="metric${hi ? " hi" : ""}"><div class="k">${k}</div><div class="v">${v}<small>${u || ""}</small></div></div>`
