@@ -1847,6 +1847,13 @@ Click "Apply result" to update the parameters on the left.`;
     /* ========================================================================
        민감도 (중심차분) + 몬테카를로
        ===================================================================== */
+    /* 턴을 k개 더하거나 빼되, 층 경계를 넘으면 층 수까지 조정한다 (sensitivity(), runMC()에서 공용) */
+    const addTurns = (c, k) => {
+      let total = Math.max(1, c.m * (c.n - 1) + c.last + k);
+      c.n = Math.max(1, Math.ceil(total / c.m));
+      c.last = total - c.m * (c.n - 1);
+      if (c.last <= 0) { c.n = Math.max(1, c.n - 1); c.last = total - c.m * (c.n - 1); }
+    };
     function sensitivity() {
       const S0 = readState(); S0.span = S0.xb - S0.xa;
       const tR = +$("tR").value / 1000, tN = Math.round(+$("tN").value),
@@ -1881,13 +1888,6 @@ Click "Apply result" to update the parameters on the left.`;
       };
       add(`Coil 1 radius R₁`, `±${(tR * 1000).toFixed(2)} mm`, s => { s.c1.R += tR; }, s => { s.c1.R -= tR; });
       add(`Coil 2 radius R₂`, `±${(tR * 1000).toFixed(2)} mm`, s => { s.c2.R += tR; }, s => { s.c2.R -= tR; });
-      /* 턴을 k개 더하거나 빼되, 층 경계를 넘으면 층 수까지 조정한다 */
-      const addTurns = (c, k) => {
-        let total = Math.max(1, c.m * (c.n - 1) + c.last + k);
-        c.n = Math.max(1, Math.ceil(total / c.m));
-        c.last = total - c.m * (c.n - 1);
-        if (c.last <= 0) { c.n = Math.max(1, c.n - 1); c.last = total - c.m * (c.n - 1); }
-      };
       add(`Coil 1 turns N₁`, `±${tN} turns`, s => addTurns(s.c1, tN), s => addTurns(s.c1, -tN));
       add(`Coil 2 turns N₂`, `±${tN} turns`, s => addTurns(s.c2, tN), s => addTurns(s.c2, -tN));
       add(`Coil separation d`, `±${(td * 1000).toFixed(2)} mm`, s => { s.d += td; }, s => { s.d -= td; });
@@ -1917,6 +1917,7 @@ Click "Apply result" to update the parameters on the left.`;
       const S0 = readState(); S0.span = S0.xb - S0.xa;
       const n = Math.max(50, +$("mcn").value | 0);
       const tR = +$("tR").value / 1000, td = +$("td").value / 1000, tI = +$("tI").value / 100;
+      const tN = Math.round(+$("tN").value), tx = +$("tx").value / 1000;
       const NP = 61;
       const xs = []; for (let i = 0; i < NP; i++) xs.push(S0.xa + S0.span * i / (NP - 1));
       const cols = Array.from({ length: NP }, () => []);
@@ -1927,10 +1928,15 @@ Click "Apply result" to update the parameters on the left.`;
         for (let t = 0; t < chunk; t++, done++) {
           const c1 = { ...S0.c1, R: S0.c1.R + gauss() * tR };
           const c2 = { ...S0.c2, R: S0.c2.R + gauss() * tR, xc: S0.d + gauss() * td };
+          if (tN > 0) {
+            addTurns(c1, Math.round(gauss() * tN));
+            addTurns(c2, Math.round(gauss() * tN));
+          }
           const I = S0.I * (1 + gauss() * tI);
+          const dx = gauss() * tx;
           const T1 = coilTurns(c1), T2 = coilTurns(c2);
           for (let i = 0; i < NP; i++)
-            cols[i].push((H_pack(xs[i], T1, c1.dir, I) + H_pack(xs[i], T2, c2.dir, I)) / OE);
+            cols[i].push((H_pack(xs[i] + dx, T1, c1.dir, I) + H_pack(xs[i] + dx, T2, c2.dir, I)) / OE);
         }
         $("mcbar").style.width = (done / n * 100).toFixed(1) + "%";
         if (done < n) { setTimeout(step, 0); return; }
@@ -1944,7 +1950,7 @@ Click "Apply result" to update the parameters on the left.`;
         mcBand = { xs, lo: loA, hi: hiA };
         $("showmc").checked = true;
         $("mcnote").innerHTML =
-          `${n} trials. The widest 5–95 percentile band is <b>${fmt(widest, 3)} Oe</b> ` +
+          `${n} trials (radius, distance, current, turn count, and probe position tolerances all applied). The widest 5–95 percentile band is <b>${fmt(widest, 3)} Oe</b> ` +
           `(${fmt(widest / Math.abs(S0.h1 - S0.h2) * 100, 2)}% of the ${Math.abs(S0.h1 - S0.h2)} Oe target span). ` +
           `If the measured mean falls within this band, the deviation is explained by manufacturing tolerance alone.`;
         render();
