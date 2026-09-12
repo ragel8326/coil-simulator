@@ -1608,7 +1608,7 @@
         lo.push(l); hi.push(h);
       });
 
-      const dw = S0.dw, NP = 31, m = contIdx.length;
+      const dw = S0.dw, NP = 61, m = contIdx.length;
       const vecFromPc = pc => {
         const vec = bestX.slice();
         contIdx.forEach((idx, j) => { vec[idx] = pc[j]; });
@@ -1779,13 +1779,15 @@
           refineLine = `Refinement skipped: ${refine.reason}`;
         }
         const p = packFromVec(base, bestX, act);
-        optBest = { p, dir2: bestDir };
         $("applyopt").disabled = false;
-        const N1 = p.m1 * p.n1, N2 = p.m2 * p.n2;
+        const last1 = Math.min(Math.max(1, p.m1), S0.c1.last);
+        const last2 = Math.min(Math.max(1, p.m2), S0.c2.last);
+        optBest = { p, dir2: bestDir, last1, last2 };
+        const N1 = p.m1 * (p.n1 - 1) + last1, N2 = p.m2 * (p.n2 - 1) + last2;
         const dwmm = S0.dw * 1000;
         let soloLine = "";
         if (S0.reqSolo25) {
-          const c1f = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw: S0.dw, xc: 0, dir: S0.c1.dir };
+          const c1f = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: last1, dw: S0.dw, xc: 0, dir: S0.c1.dir };
           const h1aloneFinal = H_pack(0, coilTurns(c1f), c1f.dir, S0.I) / OE;
           soloLine = `\nCoil 1 alone: ${h1aloneFinal.toFixed(2)} Oe (target 25±1.0)`;
         }
@@ -1794,9 +1796,9 @@
 Evaluations ${evals.toLocaleString()} · elapsed ${((performance.now() - t0) / 1000).toFixed(1)} s
 ${refineLine}${soloLine}
 
-Coil 1 : R = ${p.R1.toFixed(1)} mm,  ${p.m1} turns × ${p.n1} layers = ${N1} turns
+Coil 1 : R = ${p.R1.toFixed(1)} mm,  ${p.m1} turns/layer, ${p.n1} layers (last ${last1}) = ${N1} turns
          winding ${(p.m1 * dwmm).toFixed(1)} (width) × ${(p.n1 * dwmm).toFixed(1)} (depth) mm
-Coil 2 : R = ${p.R2.toFixed(1)} mm,  ${p.m2} turns × ${p.n2} layers = ${N2} turns, ${bestDir > 0 ? "Forward +" : "Reverse −"}
+Coil 2 : R = ${p.R2.toFixed(1)} mm,  ${p.m2} turns/layer, ${p.n2} layers (last ${last2}) = ${N2} turns, ${bestDir > 0 ? "Forward +" : "Reverse −"}
          winding ${(p.m2 * dwmm).toFixed(1)} (width) × ${(p.n2 * dwmm).toFixed(1)} (depth) mm
 Separation d = ${p.d.toFixed(1)} mm
 Window = 0.0 → ${p.d.toFixed(1)} mm  (fixed = 0 → d)
@@ -1835,6 +1837,8 @@ Click "Apply result" to update the parameters on the left.`;
       const p = optBest.p;
       $("R1").value = p.R1.toFixed(1); $("m1").value = p.m1; $("n1").value = p.n1;
       $("R2").value = p.R2.toFixed(1); $("m2").value = p.m2; $("n2").value = p.n2;
+      // Apply the effective last-layer counts used during optimization.
+      $("l1").value = optBest.last1; $("l2").value = optBest.last2;
       $("dist").value = p.d.toFixed(1);
       setDir(2, optBest.dir2);
       render();
