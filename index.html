@@ -1562,8 +1562,11 @@
     }
     function objective(p, S0, mode, minWin, dir2) {
       const dw = S0.dw;
-      const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw, xc: 0, dir: S0.c1.dir };
-      const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.max(1, p.m2), dw, xc: p.d / 1000, dir: dir2 };
+      // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
+      // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
+      // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
+      const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+      const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: dir2 };
       // Window is always [0, d] — the segment between the two coil centers — not a free variable.
       const xa = 0, xb = p.d / 1000;
       if (!(xb - xa >= minWin / 1000)) return 1e6;
@@ -1613,8 +1616,11 @@
       };
       const residuals = pc => {
         const p = packFromVec(base, vecFromPc(pc), act);
-        const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.max(1, p.m1), dw, xc: 0, dir: S0.c1.dir };
-        const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.max(1, p.m2), dw, xc: p.d / 1000, dir: bestDir };
+        // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
+        // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
+        // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
+        const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+        const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: bestDir };
         const T1 = coilTurns(c1), T2 = coilTurns(c2);
         const xa = 0, xb = p.d / 1000;
         const e = new Array(NP);
@@ -1827,8 +1833,8 @@ Click "Apply result" to update the parameters on the left.`;
     function applyOpt() {
       if (!optBest) return;
       const p = optBest.p;
-      $("R1").value = p.R1.toFixed(1); $("m1").value = p.m1; $("n1").value = p.n1; $("l1").value = p.m1;
-      $("R2").value = p.R2.toFixed(1); $("m2").value = p.m2; $("n2").value = p.n2; $("l2").value = p.m2;
+      $("R1").value = p.R1.toFixed(1); $("m1").value = p.m1; $("n1").value = p.n1;
+      $("R2").value = p.R2.toFixed(1); $("m2").value = p.m2; $("n2").value = p.n2;
       $("dist").value = p.d.toFixed(1);
       setDir(2, optBest.dir2);
       render();
