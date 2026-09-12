@@ -743,6 +743,9 @@
                 <div class="f"><label for="dist">Coil separation d (mm)</label>
                   <input type="number" id="dist" value="56.5" step="0.5">
                 </div>
+                <div class="f"><label for="jsafe">Safe current density (A/mm²)</label>
+                  <input type="number" id="jsafe" value="5" step="0.5" min="0.1">
+                </div>
               </div>
             </div>
 
@@ -1121,7 +1124,8 @@
         // The comparison window is always the segment between the two coil
         // centers (x=0 to x=d) — it is not an independent, user-set value.
         xa: 0, xb: d,
-        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value)
+        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
+        jsafe: Math.max(0.1, parseFloat($("jsafe").value) || 5),
       };
     }
 
@@ -1465,6 +1469,10 @@
        ===================================================================== */
     function renderMetrics(S, E) {
       const pct = v => (v / Math.abs(S.h1 - S.h2) * 100);
+      // 전류밀도 = 전류 ÷ 도선 단면적. 도선 지름(S.dw)은 미터 단위이므로 mm로 환산.
+      const dwmm = S.dw * 1000;
+      const wireArea = Math.PI * (dwmm / 2) * (dwmm / 2); // mm²
+      const currentDensity = S.I / wireArea; // A/mm²
       const items = [
         ["Max deviation", fmt(E.maxDev, 3), "Oe  ·  " + fmt(pct(E.maxDev), 2) + "%", true],
         ["RMS deviation", fmt(E.rmsDev, 3), "Oe"],
@@ -1477,6 +1485,7 @@
         ["Required voltage", fmt(E.V, 2), "V"],
         ["Power dissipation", fmt(E.P, 2), "W"],
         ["Copper wire length", fmt(E.L1 + E.L2, 1), "m"],
+        ["Current density", fmt(currentDensity, 2), "A/mm²  ·  limit " + fmt(S.jsafe, 1)],
       ];
       $("metrics").innerHTML = items.map(([k, v, u, hi]) =>
         `<div class="metric${hi ? " hi" : ""}"><div class="k">${k}</div><div class="v">${v}<small>${u || ""}</small></div></div>`
@@ -1498,6 +1507,9 @@
       chips.push([okEnd ? "ok" : "warn", `Combined field, x=d (task 3) · ${fmt(E.hAtD, 2)} Oe`,
       okEnd ? "Met (10±1.0, assumed)" : "Not met (10±1.0, assumed)"]);
       chips.push([S.I <= 1.001 ? "ok" : "bad", `Current ${fmt(S.I, 2)} A`, S.I <= 1.001 ? "≤ 1 A" : "> 1 A"]);
+      const jOk = currentDensity <= S.jsafe;
+      chips.push([jOk ? "ok" : "warn", `Current density ${fmt(currentDensity, 2)} A/mm²`,
+        jOk ? `≤ ${fmt(S.jsafe, 1)} A/mm² (safe threshold)` : `> ${fmt(S.jsafe, 1)} A/mm² — check heating`]);
       chips.push(["info", `Window ${fmt(S.span * 1000, 1)} mm`, `${fmt(S.xa * 1000, 1)} → ${fmt(S.xb * 1000, 1)} mm`]);
       chips.push(["info", `vs thin-coil approx.`, `error ${fmt(E.thinDiffPct, 2)}%`]);
       $("chips").innerHTML = chips.map(([c, a, b]) => `<span class="chip ${c}"><b>${a}</b>${b}</span>`).join("");
@@ -2274,7 +2286,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
     }
 
     /* ---- 이벤트 ---- */
-    ["cur", "dw", "dist", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
+    ["cur", "dw", "dist", "jsafe", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
       .forEach(id => $(id).addEventListener("input", render));
     ["showparts", "showmc", "showmeas", "showthin"].forEach(id => $(id).addEventListener("change", render));
     [1, 2].forEach(p => $("dir" + p).addEventListener("click", ev => {
