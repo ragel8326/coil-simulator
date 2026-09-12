@@ -1568,7 +1568,14 @@
       const xa = 0, xb = p.d / 1000;
       if (!(xb - xa >= minWin / 1000)) return 1e6;
       const T1 = coilTurns(c1), T2 = coilTurns(c2);
-      const NP = 31; let maxd = 0, sse = 0;
+      // NP=61 — chosen from a convergence check across 200 random designs in the
+      // search space (vs a NP=4001 "ground truth"): sampling error keeps shrinking
+      // smoothly with no cliff, but by NP=61 the worst-case error (~0.1-0.3%) is
+      // already smaller than the project's other error sources (shape ~0.03%,
+      // thickness 0.2-3%, geomagnetic background up to 5%), while DE runtime is
+      // still negligible. Going higher buys precision nothing else in the project
+      // can use. Not written up elsewhere in this repo — this comment is the record.
+      const NP = 61; let maxd = 0, sse = 0;
       for (let i = 0; i < NP; i++) {
         const u = i / (NP - 1), x = xa + (xb - xa) * u;
         const h = (H_pack(x, T1, c1.dir, S0.I) + H_pack(x, T2, c2.dir, S0.I)) / OE;
