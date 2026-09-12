@@ -1700,10 +1700,20 @@
       const D = act.length, NPOP = clamp(8 * D, 24, 60), GENS = Math.max(20, +$("gens").value | 0);
       // F=0.5, CR=1.0, population=8×D — chosen from a one-factor-at-a-time sweep
       // (F in [0.3,0.5,0.7,0.9,1.0], CR in [0.1..1.0], pop mult in [4,6,8,10,12],
-      // 30 trials each, 150 generations, default coil design) that beat the
-      // paper-default-adjacent settings (F=0.7, CR=0.9, 6×D) on both mean and
-      // spread of the final max-deviation. Not a full grid search — see the
-      // explainer doc for the caveat.
+      // 30 trials each, 150 generations, default coil design, mode=max). Measured
+      // final max-deviation (mean ± stdev of 30 runs):
+      //   F    (CR=1.0, pop=8×D):  0.3→0.804±0.092  0.5→0.755±0.012  0.7→0.772±0.017
+      //                            0.9→0.782±0.018  1.0→0.789±0.048  — F=0.5 is a
+      //                            clear minimum on both mean and spread.
+      //   CR   (F=0.5, pop=8×D):   0.1→0.863±0.043 ... 0.9→0.764±0.015  1.0→0.756±0.014
+      //                            — improves monotonically with CR, best at 1.0.
+      //   pop mult (F=0.5,CR=1.0): 4×→0.776±0.064  6×→0.763±0.019  8×→0.758±0.015
+      //                            10×→0.754±0.012  12×→0.754±0.010 — diminishing
+      //                            returns past 8×D, chosen as the speed/quality tradeoff.
+      // This beat the paper-default-adjacent settings (F=0.7, CR=0.9, 6×D) on both
+      // mean and spread. Not a full grid search (one-factor-at-a-time, not
+      // exhaustive) — see README.md's "DE 하이퍼파라미터 선택 근거" section for
+      // the full tables and methodology.
       const F = 0.5, CR = 1.0;
       let pop, fit, di = 0, g = 0, evals = 0;
       let bestX = null, bestF = Infinity, bestDir = dirs[0];
