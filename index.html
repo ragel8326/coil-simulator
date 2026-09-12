@@ -714,7 +714,6 @@
 
     <header class="top">
       <div>
-        <p class="eyebrow">Magnetic Materials · Project 1</p>
         <h1>Coil Simulator</h1>
       </div>
       <button class="themebtn" id="themebtn" type="button">Theme</button>
@@ -744,26 +743,32 @@
                 <div class="f"><label for="dist">Coil separation d (mm)</label>
                   <input type="number" id="dist" value="56.5" step="0.5">
                 </div>
-                <div class="f"><label for="pmax" title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">Power limit (W) — assumed, not from spec</label>
-                  <input type="number" id="pmax" value="5" step="0.5" min="0.1" title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">
+                <div class="f"><label for="pmax"
+                    title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">Power
+                    limit (W) — assumed, not from spec</label>
+                  <input type="number" id="pmax" value="5" step="0.5" min="0.1"
+                    title="Arbitrary design safety margin — not a number stated in the project PDF. The PDF only says to keep current around ~1 A to prevent overheating.">
                 </div>
               </div>
             </div>
 
             <div class="grp">
-              <div class="grp-h"><b><span class="swatch" style="background:var(--s-model)"></span>Coil 1 (strong)</b></div>
+              <div class="grp-h"><b><span class="swatch" style="background:var(--s-model)"></span>Coil 1 (strong)</b>
+              </div>
               <div class="fields">
-                <div class="f"><label for="R1">Mean radius (mm)</label><input type="number" id="R1" value="43.8" step="0.1">
+                <div class="f"><label for="R1">Mean radius (mm)</label><input type="number" id="R1" value="43.8"
+                    step="0.1">
                 </div>
-                <div class="f"><label for="m1">Turns per layer</label><input type="number" id="m1" value="19" step="1" min="1">
+                <div class="f"><label for="m1">Turns per layer</label><input type="number" id="m1" value="19" step="1"
+                    min="1">
                 </div>
                 <div class="f"><label for="n1">Layers</label><input type="number" id="n1" value="11" step="1" min="1">
                 </div>
-                <div class="f"><label for="l1">Turns in last layer</label><input type="number" id="l1" value="15" step="1"
-                    min="1"></div>
+                <div class="f"><label for="l1">Turns in last layer</label><input type="number" id="l1" value="15"
+                    step="1" min="1"></div>
                 <div class="f full"><label>Winding direction</label>
-                  <div class="seg" id="dir1"><button type="button" data-v="1" aria-pressed="true">Forward +</button><button
-                      type="button" data-v="-1" aria-pressed="false">Reverse &minus;</button></div>
+                  <div class="seg" id="dir1"><button type="button" data-v="1" aria-pressed="true">Forward
+                      +</button><button type="button" data-v="-1" aria-pressed="false">Reverse &minus;</button></div>
                 </div>
               </div>
               <div class="derived" id="dv1"></div>
@@ -772,16 +777,19 @@
             <div class="grp">
               <div class="grp-h"><b><span class="swatch" style="background:var(--s-thin)"></span>Coil 2 (weak)</b></div>
               <div class="fields">
-                <div class="f"><label for="R2">Mean radius (mm)</label><input type="number" id="R2" value="20" step="0.1">
+                <div class="f"><label for="R2">Mean radius (mm)</label><input type="number" id="R2" value="20"
+                    step="0.1">
                 </div>
-                <div class="f"><label for="m2">Turns per layer</label><input type="number" id="m2" value="15" step="1" min="1">
+                <div class="f"><label for="m2">Turns per layer</label><input type="number" id="m2" value="15" step="1"
+                    min="1">
                 </div>
-                <div class="f"><label for="n2">Layers</label><input type="number" id="n2" value="1" step="1" min="1"></div>
-                <div class="f"><label for="l2">Turns in last layer</label><input type="number" id="l2" value="15" step="1"
-                    min="1"></div>
+                <div class="f"><label for="n2">Layers</label><input type="number" id="n2" value="1" step="1" min="1">
+                </div>
+                <div class="f"><label for="l2">Turns in last layer</label><input type="number" id="l2" value="15"
+                    step="1" min="1"></div>
                 <div class="f full"><label>Winding direction</label>
-                  <div class="seg" id="dir2"><button type="button" data-v="1" aria-pressed="false">Forward +</button><button
-                      type="button" data-v="-1" aria-pressed="true">Reverse &minus;</button></div>
+                  <div class="seg" id="dir2"><button type="button" data-v="1" aria-pressed="false">Forward
+                      +</button><button type="button" data-v="-1" aria-pressed="true">Reverse &minus;</button></div>
                 </div>
               </div>
               <div class="derived" id="dv2"></div>
@@ -793,12 +801,15 @@
                 <div class="f full"><label>Measurement window (fixed = 0 → d)</label>
                   <input type="text" id="windisp" value="" readonly>
                 </div>
-                <div class="f"><label for="h1">Target at start (Oe)</label><input type="number" id="h1" value="25" step="0.5">
+                <div class="f"><label for="h1">Target at start (Oe)</label><input type="number" id="h1" value="25"
+                    step="0.5">
                 </div>
-                <div class="f"><label for="h2">Target at end (Oe)</label><input type="number" id="h2" value="10" step="0.5">
+                <div class="f"><label for="h2">Target at end (Oe)</label><input type="number" id="h2" value="10"
+                    step="0.5">
                 </div>
               </div>
-              <p class="note" style="margin:9px 0 0">x = 0 is the <b>coil 1 center</b>; x = d is the coil 2 center. The window always spans the full separation between the coils — it is not independently adjustable.</p>
+              <p class="note" style="margin:9px 0 0">x = 0 is the <b>coil 1 center</b>; x = d is the coil 2 center. The
+                window always spans the full separation between the coils — it is not independently adjustable.</p>
             </div>
 
           </div>
@@ -818,7 +829,8 @@
         <section id="tab-calc">
           <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
             <div class="chartbox">
-              <svg class="chart" id="mainchart" viewBox="0 0 760 340" role="img" aria-label="Field strength versus distance"></svg>
+              <svg class="chart" id="mainchart" viewBox="0 0 760 340" role="img"
+                aria-label="Field strength versus distance"></svg>
               <div class="tip" id="tip"></div>
             </div>
             <div class="legend" id="legend"></div>
@@ -829,7 +841,8 @@
           <div class="panel" style="margin-top:14px">
             <h2>Residual — Model &minus; Target Line</h2>
             <div class="chartbox">
-              <svg class="chart" id="residchart" viewBox="0 0 760 180" role="img" aria-label="Residual within the measurement window"></svg>
+              <svg class="chart" id="residchart" viewBox="0 0 760 180" role="img"
+                aria-label="Residual within the measurement window"></svg>
             </div>
             <div class="panel-body" style="border-top:1px solid var(--line-soft)">
               <p class="note" id="residnote"></p>
@@ -839,11 +852,15 @@
           <div class="panel" style="margin-top:14px">
             <h2>Display Options</h2>
             <div class="panel-body row">
-              <label class="row" style="gap:6px"><input type="checkbox" id="showparts"> <span>Split per-coil contribution</span></label>
-              <label class="row" style="gap:6px"><input type="checkbox" id="showmc"> <span>Tolerance band (computed in the
+              <label class="row" style="gap:6px"><input type="checkbox" id="showparts"> <span>Split per-coil
+                  contribution</span></label>
+              <label class="row" style="gap:6px"><input type="checkbox" id="showmc"> <span>Tolerance band (computed in
+                  the
                   Sensitivity tab)</span></label>
               <label class="row" style="gap:6px"><input type="checkbox" id="showmeas" checked> <span>Show
                   measurements</span></label>
+              <label class="row" style="gap:6px"><input type="checkbox" id="showthin"> <span>Show Model 1
+                  (thin-coil approx.)</span></label>
               <button class="act ghost" type="button" id="copysum">Copy design summary</button>
             </div>
           </div>
@@ -854,7 +871,8 @@
           <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
             <div class="panel-body">
               <h3 class="sec">Optimize &mdash; DE + Local Refinement</h3>
-              <p class="secnote">Only checked variables are searched (DE, then local refinement of the continuous ones). Applying a result overwrites the parameters on the left.</p>
+              <p class="secnote">Only checked variables are searched (DE, then local refinement of the continuous ones).
+                Applying a result overwrites the parameters on the left.</p>
 
               <div class="scroll">
                 <table class="optgrid" id="optvars">
@@ -891,7 +909,8 @@
                 </div>
               </div>
 
-              <label class="row" style="gap:6px;margin-top:12px;font-size:12px"><input type="checkbox" id="reqSolo25"> <span>Also require coil 1 alone = 25 ± 1.0 Oe (Task 1)</span></label>
+              <label class="row" style="gap:6px;margin-top:12px;font-size:12px"><input type="checkbox" id="reqSolo25">
+                <span>Also require coil 1 alone = 25 ± 1.0 Oe (Task 1)</span></label>
 
               <div class="row" style="margin-top:14px">
                 <button class="act" type="button" id="runopt">Run optimization</button>
@@ -910,18 +929,23 @@
           <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
             <div class="panel-body">
               <h3 class="sec">Sensitivity Analysis</h3>
-              <p class="secnote">Computes the change in field from perturbing each parameter, using central differences.</p>
+              <p class="secnote">Computes the change in field from perturbing each parameter, using central differences.
+              </p>
               <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
-                <div class="f"><label for="tR">Radius tolerance ± (mm)</label><input type="number" id="tR" value="0.5" step="0.1">
+                <div class="f"><label for="tR">Radius tolerance ± (mm)</label><input type="number" id="tR" value="0.5"
+                    step="0.1">
                 </div>
-                <div class="f"><label for="tN">Turn count tolerance ± (turns)</label><input type="number" id="tN" value="1" step="1">
+                <div class="f"><label for="tN">Turn count tolerance ± (turns)</label><input type="number" id="tN"
+                    value="1" step="1">
                 </div>
-                <div class="f"><label for="td">Distance tolerance ± (mm)</label><input type="number" id="td" value="1" step="0.1">
+                <div class="f"><label for="td">Distance tolerance ± (mm)</label><input type="number" id="td" value="1"
+                    step="0.1">
                 </div>
-                <div class="f"><label for="tI">Current tolerance ± (%)</label><input type="number" id="tI" value="1" step="0.1">
+                <div class="f"><label for="tI">Current tolerance ± (%)</label><input type="number" id="tI" value="1"
+                    step="0.1">
                 </div>
-                <div class="f"><label for="tx">Probe position tolerance ± (mm)</label><input type="number" id="tx" value="0.5"
-                    step="0.1"></div>
+                <div class="f"><label for="tx">Probe position tolerance ± (mm)</label><input type="number" id="tx"
+                    value="0.5" step="0.1"></div>
               </div>
               <div class="scroll" style="margin-top:14px">
                 <table class="t" id="senstable"></table>
@@ -932,7 +956,8 @@
           <div class="panel" style="margin-top:14px">
             <h2>Monte Carlo Tolerance Simulation</h2>
             <div class="panel-body">
-              <p class="secnote">Runs random trials using the tolerances above as standard deviations to build a field band. If measurements fall outside the band, look beyond manufacturing tolerance for the cause.</p>
+              <p class="secnote">Runs random trials using the tolerances above as standard deviations to build a field
+                band. If measurements fall outside the band, look beyond manufacturing tolerance for the cause.</p>
               <div class="row">
                 <div class="f" style="max-width:140px"><label for="mcn">Number of trials</label>
                   <input type="number" id="mcn" value="400" step="100" min="50">
@@ -950,7 +975,8 @@
           <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
             <div class="panel-body">
               <h3 class="sec">Repeated Measurement Input</h3>
-              <p class="secnote">One line per point: <code>distance(mm), reading1, reading2 ...</code> — matching distances are grouped automatically to compute the mean and STDEV (n&minus;1).</p>
+              <p class="secnote">One line per point: <code>distance(mm), reading1, reading2 ...</code> — matching
+                distances are grouped automatically to compute the mean and STDEV (n&minus;1).</p>
               <textarea id="raw" rows="9" spellcheck="false">14.0, 24.20, 24.26, 24.20
 17.2, 22.68, 22.63, 22.60
 20.4, 20.88, 20.88, 20.89
@@ -964,7 +990,8 @@
                 <button class="act" type="button" id="parsebtn">Compute</button>
                 <button class="act ghost" type="button" id="clearbtn">Clear</button>
                 <button class="act ghost" type="button" id="copytable">Copy table</button>
-                <span class="note" id="datanote">Sample data is preloaded &mdash; replace it with your own measurements.</span>
+                <span class="note" id="datanote">Sample data is preloaded &mdash; replace it with your own
+                  measurements.</span>
               </div>
               <div class="metrics" id="datametrics" style="margin-top:16px;border-top:1px solid var(--line-soft)"></div>
               <div class="scroll" style="margin-top:14px">
@@ -976,22 +1003,29 @@
           <div class="panel" style="margin-top:14px">
             <h2>Nonlinear Least Squares (Levenberg&ndash;Marquardt)</h2>
             <div class="panel-body">
-              <p class="secnote">Starting from the design values, back-solves the actual parameters that best explain the measurements. k = amplitude factor, x&#8320; = probe zero, H_bg = background field offset.</p>
+              <p class="secnote">Starting from the design values, back-solves the actual parameters that best explain
+                the measurements. k = amplitude factor, x&#8320; = probe zero, H_bg = background field offset.</p>
 
               <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:12px">
                 <div class="f"><label>Parameters to fit</label>
                   <div style="display:flex;flex-direction:column;gap:4px;padding-top:3px">
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_k" checked> Amplitude factor k
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_k" checked>
+                      Amplitude factor k
                       (effective N&middot;I)</label>
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_x0"> Probe zero x&#8320;
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_x0"> Probe zero
+                      x&#8320;
                       (mm)</label>
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_Hbg"> Background field offset
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_Hbg"> Background
+                      field offset
                       H_bg (Oe)</label>
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R1" checked> Coil 1 effective
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R1" checked> Coil 1
+                      effective
                       radius (mm)</label>
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_d"> Coil separation d
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_d"> Coil separation
+                      d
                       (mm)</label>
-                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R2"> Coil 2 effective radius
+                    <label class="row" style="gap:6px;font-size:12px"><input type="checkbox" id="fit_R2"> Coil 2
+                      effective radius
                       (mm)</label>
                   </div>
                 </div>
@@ -1013,18 +1047,14 @@
               <div class="scroll" style="margin-top:14px">
                 <table class="t" id="fittable"></table>
               </div>
-              <p class="note" id="fitnote" style="margin-top:12px">Not fitted yet. Enter measurement data and click &ldquo;Compute&rdquo; first.</p>
+              <p class="note" id="fitnote" style="margin-top:12px">Not fitted yet. Enter measurement data and click
+                &ldquo;Compute&rdquo; first.</p>
             </div>
           </div>
         </section>
 
       </main>
     </div>
-
-    <footer>
-      H(x) = N·I·r²/2(r²+x²)<sup>3/2</sup> — Simpson et al., NASA Technical Report, 2001 (eq. 30). 1 Oe = 79.5774715 A/m, copper resistivity 1.68&times;10&#8315;&#8312; &Omega;&middot;m.
-    </footer>
-
   </div>
 
   <script>
@@ -1331,6 +1361,15 @@
         "stroke-linejoin": "round", "stroke-linecap": "round"
       }));
 
+      // Model 1 (얇은 코일 근사) — 토글
+      if ($("showthin").checked) {
+        let d1 = ""; xs.forEach((x, i) => { d1 += (i ? "L" : "M") + X(x) + " " + Y(E.thin(x)); });
+        svg.appendChild(el("path", {
+          d: d1, fill: "none", stroke: cThin, "stroke-width": 1.8,
+          "stroke-dasharray": "5 3", "stroke-linejoin": "round", opacity: .85
+        }));
+      }
+
       // 비선형 최소자승 피팅 곡선
       if (fitResult) {
         const fn = modelMaker(S, fitResult.P);
@@ -1395,6 +1434,7 @@
       if (measured && $("showmeas").checked) items.push(["Measured mean ± STDEV", cMeas, "solid"]);
       if (fitResult) items.push(["Nonlinear least-squares fit", cMeas, "dash"]);
       if (mcBand && $("showmc").checked) items.push(["Tolerance band (5–95%)", cModel, "band"]);
+      if ($("showthin").checked) items.push(["Model 1 (thin-coil approx.)", cThin, "dash"]);
       $("legend").innerHTML = items.map(([l, c, k]) =>
         `<span><i style="border-top-color:${c};border-top-style:${k === "dash" ? "dashed" : "solid"};${k === "band" ? `border:0;height:9px;background:${c};opacity:.28;border-radius:2px;vertical-align:-1px` : ""}"></i>${l}</span>`
       ).join("");
@@ -1453,6 +1493,7 @@
         ["Max deviation", fmt(E.maxDev, 3), "Oe  ·  " + fmt(pct(E.maxDev), 2) + "%", true],
         ["RMS deviation", fmt(E.rmsDev, 3), "Oe"],
         ["Nonlinearity", fmt(E.nonlin, 3), "Oe  ·  " + fmt(pct(E.nonlin), 2) + "%"],
+        ["Model 1, x=0 / x=d", fmt(E.thin(0), 2) + " / " + fmt(E.thin(S.d), 2), "Oe"],
         ["Gradient slope", fmt(E.fit.a / 100, 2), "Oe/cm"],
         ["Coil 1 alone, center field", fmt(E.h1solo, 2), "Oe"],
         ["Total turns", E.N1 + " / " + E.N2, "turns"],
@@ -2228,7 +2269,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe` + (E.tap && !E.tap.short ? ` 
     /* ---- 이벤트 ---- */
     ["cur", "dw", "dist", "pmax", "R1", "m1", "n1", "l1", "R2", "m2", "n2", "l2", "h1", "h2"]
       .forEach(id => $(id).addEventListener("input", render));
-    ["showparts", "showmc", "showmeas"].forEach(id => $(id).addEventListener("change", render));
+    ["showparts", "showmc", "showmeas", "showthin"].forEach(id => $(id).addEventListener("change", render));
     [1, 2].forEach(p => $("dir" + p).addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return; setDir(p, +b.dataset.v); render();
     }));
