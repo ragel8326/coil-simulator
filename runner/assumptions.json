@@ -1,0 +1,16 @@
+{
+  "_read_me": "Every value here is an ASSUMPTION, not a confirmed spec. Each has a status of 'confirmed' or 'unconfirmed'. Replace the unconfirmed ones once the real numbers are known (3D-printed bobbin tolerance, wire spec sheet, course-stated safe current density, the x=d target's tolerance). Nothing else in the runner needs to change when you do — report.mjs reads this file and prints it verbatim.",
+
+  "toleranceModel": "Each '3sigma' value below is interpreted as +/-3 standard deviations of a normal distribution (i.e. sigma = value / 3), per README.md section 3-5 of the implementation spec.",
+
+  "coilRadiusTolerance3Sigma_mm": { "value": 0.5, "status": "unconfirmed", "note": "3D-printed bobbin radius tolerance — needs the actual printer/process spec." },
+  "coilSeparationTolerance3Sigma_mm": { "value": 0.5, "status": "unconfirmed", "note": "3D-printed bobbin separation tolerance — needs the actual printer/process spec." },
+  "wireDiameterTolerance3Sigma_mm": { "value": 0.01, "status": "unconfirmed", "note": "Magnet wire diameter tolerance — needs the wire spec sheet." },
+  "turnCountTolerance": { "value": 0, "status": "confirmed", "note": "Turn count is exact by construction (counted, not measured)." },
+
+  "safeCurrentDensity_A_per_mm2": { "value": 5, "status": "unconfirmed", "note": "Used by the web bench as 'jsafe'. Unclear whether this is a course-given number or a team-chosen safety margin." },
+
+  "task3EndTolerance_Oe": { "value": 1.0, "status": "unconfirmed", "note": "The project PDF states +/-1.0 Oe only for the 25 Oe (task 1 / task 3 start) target. The 10 Oe (task 3 end) tolerance is assumed equal for consistency — not stated in the PDF." },
+
+  "lastLayerTurnsSearchable": { "value": false, "status": "confirmed", "note": "l1/l2 (last-layer turn counts) are treated as user-fixed, not search variables, in both the web UI and this runner." }
+}

@@ -1056,14 +1056,16 @@
 
   <script>
     "use strict";
+    const $ = id => document.getElementById(id);
+    const fmt = (v, d = 2) => (!isFinite(v) ? "—" : v.toFixed(d));
+
+    /* ==== COIL-CORE-START ==== */
     /* ========================================================================
        상수 · 유틸
        ===================================================================== */
     const OE = 79.5774715459;   // A/m per Oe
     const RHO = 1.68e-8;        // Ω·m, 구리
-    const $ = id => document.getElementById(id);
     const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-    const fmt = (v, d = 2) => (!isFinite(v) ? "—" : v.toFixed(d));
 
     /* ========================================================================
        코일 모델
@@ -1102,32 +1104,6 @@
     }
     function wireLength(T) { let L = 0; for (let k = 0; k < T.rs.length; k++) L += 2 * Math.PI * T.rs[k]; return L; }
     function resistance(len, dw) { return RHO * len / (Math.PI * (dw / 2) * (dw / 2)); }
-
-    /* ========================================================================
-       상태 읽기
-       ===================================================================== */
-    const dirState = { 1: 1, 2: -1 };
-    function readState() {
-      const dw = parseFloat($("dw").value) / 1000;
-      const mk = (p, xc) => ({
-        R: Math.max(1e-4, parseFloat($("R" + p).value) / 1000),
-        m: Math.max(1, Math.round(+$("m" + p).value)),
-        n: Math.max(1, Math.round(+$("n" + p).value)),
-        last: Math.max(1, Math.round(+$("l" + p).value)),
-        dw, xc, dir: dirState[p]
-      });
-      const d = parseFloat($("dist").value) / 1000;
-      const c1 = mk(1, 0), c2 = mk(2, d);
-      c1.last = Math.min(c1.last, c1.m); c2.last = Math.min(c2.last, c2.m);
-      return {
-        I: parseFloat($("cur").value) || 1, dw, d, c1, c2,
-        // The comparison window is always the segment between the two coil
-        // centers (x=0 to x=d) — it is not an independent, user-set value.
-        xa: 0, xb: d,
-        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
-        jsafe: Math.max(0.1, parseFloat($("jsafe").value) || 5),
-      };
-    }
 
     /* ========================================================================
        핵심 계산
@@ -1224,6 +1200,291 @@
         prev = cur;
       }
       return best;
+    }
+
+
+    // 2026-09-13: 탐색 범위 확대. 이전 범위(R1 20~60, n1 1~20, R2 15~60,
+    // n2 1~12, d 30~140)에서는 통과 설계의 11%가 R1 상한 60mm에, 7%가 n1 상한
+    // 20층에 붙어 있었다 — 최적점이 울타리에 눌려 있다는 신호였다. 이 상한들은
+    // 물리적 제약이 아니라 처음에 임의로 정한 값이었으므로 넓혔다.
+    // 전류 상한 1.0A만은 과제 요구사항이므로 그대로 둔다.
+    const OPTVARS = [
+      { k: "R1", label: "Coil 1 radius (mm)", min: 10, max: 120, int: false },
+      { k: "m1", label: "Coil 1 turns/layer", min: 1, max: 80, int: true },
+      { k: "n1", label: "Coil 1 layers", min: 1, max: 40, int: true },
+      { k: "R2", label: "Coil 2 radius (mm)", min: 5, max: 120, int: false },
+      { k: "m2", label: "Coil 2 turns/layer", min: 1, max: 80, int: true },
+      { k: "n2", label: "Coil 2 layers", min: 1, max: 40, int: true },
+      { k: "d", label: "Coil separation (mm)", min: 10, max: 300, int: false },
+      { k: "I", label: "Current (A)", min: 0.1, max: 1.0, int: false },
+    ];
+
+    function packFromVec(base, vec, act) {
+      const o = { ...base };
+      act.forEach((v, i) => { o[v.k] = v.int ? Math.round(vec[i]) : vec[i]; });
+      return o;
+    }
+
+    function objective(p, S0, mode, minWin, dir2) {
+      const dw = S0.dw;
+      // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
+      // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
+      // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
+      const I = p.I ?? S0.I;
+      const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+      const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: dir2 };
+      // Window is always [0, d] — the segment between the two coil centers — not a free variable.
+      const xa = 0, xb = p.d / 1000;
+      if (!(xb - xa >= minWin / 1000)) return 1e6;
+      const T1 = coilTurns(c1), T2 = coilTurns(c2);
+      // NP=61 — chosen from a convergence check across 200 random designs in the
+      // search space (vs a NP=4001 "ground truth"): sampling error keeps shrinking
+      // smoothly with no cliff, but by NP=61 the worst-case error (~0.1-0.3%) is
+      // already smaller than the project's other error sources (shape ~0.03%,
+      // thickness 0.2-3%, geomagnetic background up to 5%), while DE runtime is
+      // still negligible. Going higher buys precision nothing else in the project
+      // can use. Not written up elsewhere in this repo — this comment is the record.
+      const NP = 61; let maxd = 0, sse = 0;
+      for (let i = 0; i < NP; i++) {
+        const u = i / (NP - 1), x = xa + (xb - xa) * u;
+        const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
+        const t = S0.h1 + (S0.h2 - S0.h1) * u;
+        const e = h - t; sse += e * e; if (Math.abs(e) > maxd) maxd = Math.abs(e);
+      }
+      let v = mode === "max" ? maxd : sse / NP;
+      // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
+      const h1alone = H_pack(0, T1, c1.dir, I) / OE;
+      const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
+      if (S0.reqSolo25 && solo25Excess > 0) return 1e6;
+      return v;
+    }
+
+
+    /* DE로 찾은 해를 출발점으로, 연속변수만 Gauss-Newton/LM으로 국소 정밀화한다.
+       runFit()의 LM 패턴(수치 야코비안 → 정규방정식 → lambda 감쇠)을 재사용.
+       lo/hi는 act와 같은 순서로 정렬된 전체 탐색범위 배열이다(연속변수만 사용). */
+    function refineLocal(S0, base, act, bestX, bestDir, mode, minWin, lo, hi) {
+      const contIdx = [];
+      act.forEach((v, i) => { if (!v.int) contIdx.push(i); });
+      if (!contIdx.length) return { vec: bestX, refined: false, objAfter: null, reason: "No continuous variables selected to refine" };
+
+      const cLo = contIdx.map(i => Math.min(lo[i], hi[i]));
+      const cHi = contIdx.map(i => Math.max(lo[i], hi[i]));
+
+      const dw = S0.dw, NP = 61, m = contIdx.length;
+      const vecFromPc = pc => {
+        const vec = bestX.slice();
+        contIdx.forEach((idx, j) => { vec[idx] = pc[j]; });
+        return vec;
+      };
+      const residuals = pc => {
+        const p = packFromVec(base, vecFromPc(pc), act);
+        const I = p.I ?? S0.I;
+        // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
+        // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
+        // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
+        const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+        const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: bestDir };
+        const T1 = coilTurns(c1), T2 = coilTurns(c2);
+        const xa = 0, xb = p.d / 1000;
+        const e = new Array(NP);
+        for (let i = 0; i < NP; i++) {
+          const u = i / (NP - 1), x = xa + (xb - xa) * u;
+          const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
+          const t = S0.h1 + (S0.h2 - S0.h1) * u;
+          e[i] = h - t;
+        }
+        return e;
+      };
+      const sse = pc => { const e = residuals(pc); let s = 0; for (let i = 0; i < e.length; i++) s += e[i] * e[i]; return s; };
+
+      const p0 = packFromVec(base, bestX, act);
+      const objBefore = objective(p0, S0, mode, minWin, bestDir);
+
+      let pc = contIdx.map(i => bestX[i]);
+      let c = sse(pc), lambda = 1e-3;
+      const MAXIT = 60;
+
+      const jacobian = pv => {
+        const J = Array.from({ length: NP }, () => new Array(m).fill(0));
+        for (let j = 0; j < m; j++) {
+          const h = Math.max(1e-6, Math.abs(pv[j]) * 1e-5);
+          const pp = pv.slice(); pp[j] += h; const rp = residuals(pp);
+          const pm = pv.slice(); pm[j] -= h; const rm = residuals(pm);
+          for (let i = 0; i < NP; i++) J[i][j] = (rp[i] - rm[i]) / (2 * h);
+        }
+        return J;
+      };
+      const normal = (pv, J) => {
+        const r0 = residuals(pv);
+        const A = Array.from({ length: m }, () => new Array(m).fill(0)), b = new Array(m).fill(0);
+        for (let i = 0; i < NP; i++) {
+          const e = -r0[i];
+          for (let j = 0; j < m; j++) {
+            b[j] += e * J[i][j];
+            for (let k = 0; k < m; k++) A[j][k] += J[i][j] * J[i][k];
+          }
+        }
+        return { A, b };
+      };
+
+      for (let it = 0; it < MAXIT; it++) {
+        const J = jacobian(pc);
+        const { A, b } = normal(pc, J);
+        let stepped = false, converged = false;
+        for (let t = 0; t < 14; t++) {
+          const Ad = A.map((row, j) => row.map((v, k) => k === j ? v * (1 + lambda) : v));
+          const dp = solveLin(Ad, b);
+          if (!dp) { lambda *= 10; continue; }
+          const pn = pc.map((v, j) => clamp(v + dp[j], cLo[j], cHi[j]));
+          const cn = sse(pn);
+          if (isFinite(cn) && cn < c) {
+            const rel = (c - cn) / Math.max(c, 1e-30);
+            pc = pn; c = cn; lambda = Math.max(lambda / 10, 1e-12); stepped = true;
+            if (rel < 1e-10) converged = true;
+            break;
+          }
+          lambda *= 10;
+          if (lambda > 1e13) break;
+        }
+        if (!stepped || converged) break;
+      }
+
+      const vec = vecFromPc(pc);
+      const p = packFromVec(base, vec, act);
+      const objAfter = objective(p, S0, mode, minWin, bestDir);
+      if (!(objAfter < 1e5)) return { vec: bestX, refined: false, objAfter: objBefore, reason: "Refinement result violates constraints" };
+      if (!(objAfter < objBefore)) return { vec: bestX, refined: false, objAfter: objBefore, reason: "Refinement did not improve on the DE result" };
+      return { vec, refined: true, objAfter, reason: "" };
+    }
+
+    /* 차분진화(DE) 코어 — F=0.5, CR=1.0, NPOP=clamp(8*D,24,60)의 근거는
+       README.md의 "DE 하이퍼파라미터 선택 근거" 절 참고. rng는 재현성을 위해
+       주입받는다(브라우저에서는 Math.random, 러너에서는 시드 PRNG).
+       opts = { mode, minWin, dirs, gens, rng }.
+       각 세대가 끝날 때마다 진행 상황을 yield하고, 마지막에
+       { bestX, bestDir, bestObj, history }를 return한다. */
+    function* optimizeDEGen(S0, act, lo, hi, opts) {
+      const { mode, minWin, dirs, gens: GENS, rng } = opts;
+      const base = {
+        R1: S0.c1.R * 1000, m1: S0.c1.m, n1: S0.c1.n, R2: S0.c2.R * 1000,
+        m2: S0.c2.m, n2: S0.c2.n, d: S0.d * 1000
+      };
+      const D = act.length, NPOP = clamp(8 * D, 24, 60);
+      const F = 0.5, CR = 1.0;
+      let bestX = null, bestF = Infinity, bestDir = dirs[0], evals = 0;
+      const history = [];
+
+      for (let di = 0; di < dirs.length; di++) {
+        const dir2 = dirs[di];
+        let pop = [], fit = [];
+        for (let i = 0; i < NPOP; i++) {
+          const v = lo.map((l, j) => l + rng() * (hi[j] - l));
+          pop.push(v); fit.push(objective(packFromVec(base, v, act), S0, mode, minWin, dir2));
+          evals++;
+        }
+        for (let gi = 0; gi < GENS; gi++) {
+          for (let i = 0; i < NPOP; i++) {
+            let a, b, c;
+            do { a = (rng() * NPOP) | 0; } while (a === i);
+            do { b = (rng() * NPOP) | 0; } while (b === i || b === a);
+            do { c = (rng() * NPOP) | 0; } while (c === i || c === a || c === b);
+            const jr = (rng() * D) | 0, trial = new Array(D);
+            for (let j = 0; j < D; j++) {
+              trial[j] = (rng() < CR || j === jr)
+                ? clamp(pop[a][j] + F * (pop[b][j] - pop[c][j]), lo[j], hi[j])
+                : pop[i][j];
+            }
+            const f = objective(packFromVec(base, trial, act), S0, mode, minWin, dir2);
+            evals++;
+            if (f < fit[i]) { pop[i] = trial; fit[i] = f; }
+            if (f < bestF) { bestF = f; bestX = trial.slice(); bestDir = dir2; }
+          }
+          // g is reported 1-indexed (post-increment), matching the original
+          // inline loop's `oneGen(); g++;` display semantics.
+          const g = gi + 1;
+          history.push({ di, g, dir: dir2, bestF, evals });
+          yield { di, g, GENS, dirs, bestF, bestX, bestDir, evals };
+        }
+      }
+      return { bestX, bestDir, bestObj: bestF, history };
+    }
+
+    /* optimizeDEGen을 끝까지 동기적으로 돌린다(러너 및 테스트용).
+       onGeneration이 있으면 세대마다 호출한다(브라우저는 대신 제너레이터를
+       직접 구동해 70ms 단위로 양보한다 — runOptimize() 참고). */
+    function optimizeDE(S0, act, lo, hi, opts) {
+      const it = optimizeDEGen(S0, act, lo, hi, opts);
+      let r;
+      do { r = it.next(); if (!r.done && opts.onGeneration) opts.onGeneration(r.value); } while (!r.done);
+      return r.value;
+    }
+
+    /* 선형계 풀이 (부분 피벗 가우스 소거) */
+    function solveLin(A, b) {
+      const n = b.length;
+      const M = A.map((r, i) => [...r, b[i]]);
+      for (let c = 0; c < n; c++) {
+        let piv = c;
+        for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+        if (Math.abs(M[piv][c]) < 1e-14) return null;
+        [M[c], M[piv]] = [M[piv], M[c]];
+        for (let r = 0; r < n; r++) {
+          if (r === c) continue;
+          const f = M[r][c] / M[c][c];
+          for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+        }
+      }
+      return M.map((r, i) => r[n] / r[i]);
+    }
+
+    /* 역행렬 (가우스-조던) */
+    function invert(A) {
+      const n = A.length;
+      const M = A.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => i === j ? 1 : 0)]);
+      for (let c = 0; c < n; c++) {
+        let piv = c;
+        for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+        if (Math.abs(M[piv][c]) < 1e-14) return null;
+        [M[c], M[piv]] = [M[piv], M[c]];
+        const d = M[c][c];
+        for (let k = 0; k < 2 * n; k++) M[c][k] /= d;
+        for (let r = 0; r < n; r++) {
+          if (r === c) continue;
+          const f = M[r][c];
+          for (let k = 0; k < 2 * n; k++) M[r][k] -= f * M[c][k];
+        }
+      }
+      return M.map(r => r.slice(n));
+    }
+
+
+    /* ==== COIL-CORE-END ==== */
+
+    /* ========================================================================
+       상태 읽기
+       ===================================================================== */
+    const dirState = { 1: 1, 2: -1 };
+    function readState() {
+      const dw = parseFloat($("dw").value) / 1000;
+      const mk = (p, xc) => ({
+        R: Math.max(1e-4, parseFloat($("R" + p).value) / 1000),
+        m: Math.max(1, Math.round(+$("m" + p).value)),
+        n: Math.max(1, Math.round(+$("n" + p).value)),
+        last: Math.max(1, Math.round(+$("l" + p).value)),
+        dw, xc, dir: dirState[p]
+      });
+      const d = parseFloat($("dist").value) / 1000;
+      const c1 = mk(1, 0), c2 = mk(2, d);
+      c1.last = Math.min(c1.last, c1.m); c2.last = Math.min(c2.last, c2.m);
+      return {
+        I: parseFloat($("cur").value) || 1, dw, d, c1, c2,
+        // The comparison window is always the segment between the two coil
+        // centers (x=0 to x=d) — it is not an independent, user-set value.
+        xa: 0, xb: d,
+        h1: parseFloat($("h1").value), h2: parseFloat($("h2").value),
+        jsafe: Math.max(0.1, parseFloat($("jsafe").value) || 5),
+      };
     }
 
     /* ========================================================================
@@ -1551,15 +1812,6 @@
     /* ========================================================================
        최적화 — 차분진화(DE)
        ===================================================================== */
-    const OPTVARS = [
-      { k: "R1", label: "Coil 1 radius (mm)", min: 20, max: 60, int: false },
-      { k: "m1", label: "Coil 1 turns/layer", min: 8, max: 40, int: true },
-      { k: "n1", label: "Coil 1 layers", min: 1, max: 20, int: true },
-      { k: "R2", label: "Coil 2 radius (mm)", min: 15, max: 60, int: false },
-      { k: "m2", label: "Coil 2 turns/layer", min: 1, max: 40, int: true },
-      { k: "n2", label: "Coil 2 layers", min: 1, max: 12, int: true },
-      { k: "d", label: "Coil separation (mm)", min: 30, max: 140, int: false },
-    ];
     function buildOptTable() {
       const tb = $("optvars").querySelector("tbody");
       tb.innerHTML = OPTVARS.map(v => `<tr>
@@ -1570,146 +1822,10 @@
   </tr>`).join("");
     }
 
-    function packFromVec(base, vec, act) {
-      const o = { ...base };
-      act.forEach((v, i) => { o[v.k] = v.int ? Math.round(vec[i]) : vec[i]; });
-      return o;
-    }
-    function objective(p, S0, mode, minWin, dir2) {
-      const dw = S0.dw;
-      // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
-      // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
-      // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
-      const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
-      const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: dir2 };
-      // Window is always [0, d] — the segment between the two coil centers — not a free variable.
-      const xa = 0, xb = p.d / 1000;
-      if (!(xb - xa >= minWin / 1000)) return 1e6;
-      const T1 = coilTurns(c1), T2 = coilTurns(c2);
-      // NP=61 — chosen from a convergence check across 200 random designs in the
-      // search space (vs a NP=4001 "ground truth"): sampling error keeps shrinking
-      // smoothly with no cliff, but by NP=61 the worst-case error (~0.1-0.3%) is
-      // already smaller than the project's other error sources (shape ~0.03%,
-      // thickness 0.2-3%, geomagnetic background up to 5%), while DE runtime is
-      // still negligible. Going higher buys precision nothing else in the project
-      // can use. Not written up elsewhere in this repo — this comment is the record.
-      const NP = 61; let maxd = 0, sse = 0;
-      for (let i = 0; i < NP; i++) {
-        const u = i / (NP - 1), x = xa + (xb - xa) * u;
-        const h = (H_pack(x, T1, c1.dir, S0.I) + H_pack(x, T2, c2.dir, S0.I)) / OE;
-        const t = S0.h1 + (S0.h2 - S0.h1) * u;
-        const e = h - t; sse += e * e; if (Math.abs(e) > maxd) maxd = Math.abs(e);
-      }
-      let v = mode === "max" ? maxd : sse / NP;
-      // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
-      const h1alone = H_pack(0, T1, c1.dir, S0.I) / OE;
-      const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
-      if (S0.reqSolo25 && solo25Excess > 0) return 1e6;
-      return v;
-    }
-
-    /* DE로 찾은 해를 출발점으로, 연속변수만 Gauss-Newton/LM으로 국소 정밀화한다.
-       runFit()의 LM 패턴(수치 야코비안 → 정규방정식 → lambda 감쇠)을 재사용. */
-    function refineLocal(S0, base, act, bestX, bestDir, mode, minWin) {
-      const contIdx = [];
-      act.forEach((v, i) => { if (!v.int) contIdx.push(i); });
-      if (!contIdx.length) return { vec: bestX, refined: false, objAfter: null, reason: "No continuous variables selected to refine" };
-
-      const lo = [], hi = [];
-      contIdx.forEach(i => {
-        const v = act[i];
-        let l = +$("ol_" + v.k).value, h = +$("oh_" + v.k).value;
-        if (h < l) { const t = l; l = h; h = t; }
-        lo.push(l); hi.push(h);
-      });
-
-      const dw = S0.dw, NP = 61, m = contIdx.length;
-      const vecFromPc = pc => {
-        const vec = bestX.slice();
-        contIdx.forEach((idx, j) => { vec[idx] = pc[j]; });
-        return vec;
-      };
-      const residuals = pc => {
-        const p = packFromVec(base, vecFromPc(pc), act);
-        // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
-        // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
-        // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
-        const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
-        const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: bestDir };
-        const T1 = coilTurns(c1), T2 = coilTurns(c2);
-        const xa = 0, xb = p.d / 1000;
-        const e = new Array(NP);
-        for (let i = 0; i < NP; i++) {
-          const u = i / (NP - 1), x = xa + (xb - xa) * u;
-          const h = (H_pack(x, T1, c1.dir, S0.I) + H_pack(x, T2, c2.dir, S0.I)) / OE;
-          const t = S0.h1 + (S0.h2 - S0.h1) * u;
-          e[i] = h - t;
-        }
-        return e;
-      };
-      const sse = pc => { const e = residuals(pc); let s = 0; for (let i = 0; i < e.length; i++) s += e[i] * e[i]; return s; };
-
-      const p0 = packFromVec(base, bestX, act);
-      const objBefore = objective(p0, S0, mode, minWin, bestDir);
-
-      let pc = contIdx.map(i => bestX[i]);
-      let c = sse(pc), lambda = 1e-3;
-      const MAXIT = 60;
-
-      const jacobian = pv => {
-        const J = Array.from({ length: NP }, () => new Array(m).fill(0));
-        for (let j = 0; j < m; j++) {
-          const h = Math.max(1e-6, Math.abs(pv[j]) * 1e-5);
-          const pp = pv.slice(); pp[j] += h; const rp = residuals(pp);
-          const pm = pv.slice(); pm[j] -= h; const rm = residuals(pm);
-          for (let i = 0; i < NP; i++) J[i][j] = (rp[i] - rm[i]) / (2 * h);
-        }
-        return J;
-      };
-      const normal = (pv, J) => {
-        const r0 = residuals(pv);
-        const A = Array.from({ length: m }, () => new Array(m).fill(0)), b = new Array(m).fill(0);
-        for (let i = 0; i < NP; i++) {
-          const e = -r0[i];
-          for (let j = 0; j < m; j++) {
-            b[j] += e * J[i][j];
-            for (let k = 0; k < m; k++) A[j][k] += J[i][j] * J[i][k];
-          }
-        }
-        return { A, b };
-      };
-
-      for (let it = 0; it < MAXIT; it++) {
-        const J = jacobian(pc);
-        const { A, b } = normal(pc, J);
-        let stepped = false, converged = false;
-        for (let t = 0; t < 14; t++) {
-          const Ad = A.map((row, j) => row.map((v, k) => k === j ? v * (1 + lambda) : v));
-          const dp = solveLin(Ad, b);
-          if (!dp) { lambda *= 10; continue; }
-          const pn = pc.map((v, j) => clamp(v + dp[j], lo[j], hi[j]));
-          const cn = sse(pn);
-          if (isFinite(cn) && cn < c) {
-            const rel = (c - cn) / Math.max(c, 1e-30);
-            pc = pn; c = cn; lambda = Math.max(lambda / 10, 1e-12); stepped = true;
-            if (rel < 1e-10) converged = true;
-            break;
-          }
-          lambda *= 10;
-          if (lambda > 1e13) break;
-        }
-        if (!stepped || converged) break;
-      }
-
-      const vec = vecFromPc(pc);
-      const p = packFromVec(base, vec, act);
-      const objAfter = objective(p, S0, mode, minWin, bestDir);
-      if (!(objAfter < 1e5)) return { vec: bestX, refined: false, objAfter: objBefore, reason: "Refinement result violates constraints" };
-      if (!(objAfter < objBefore)) return { vec: bestX, refined: false, objAfter: objBefore, reason: "Refinement did not improve on the DE result" };
-      return { vec, refined: true, objAfter, reason: "" };
-    }
-
     let optBest = null, optRunning = false;
+    /* DE(core의 optimizeDEGen) + 국소 정밀화(core의 refineLocal) 순으로 돌린다.
+       세대 진행은 core 제너레이터가 yield하는 상태를 70ms 단위로 소비하며
+       진행률 표시만 여기서 담당한다 — 알고리즘 자체는 core 안에 있다. */
     function runOptimize() {
       if (optRunning) return;
       const S0 = readState();
@@ -1724,67 +1840,25 @@
       for (let j = 0; j < lo.length; j++) if (hi[j] < lo[j]) { const t = lo[j]; lo[j] = hi[j]; hi[j] = t; }
       const mode = $("objsel").value, minWin = +$("minwin").value;
       const dirs = $("dir2sel").value === "auto" ? [1, -1] : [S0.c2.dir];
-
-      const D = act.length, NPOP = clamp(8 * D, 24, 60), GENS = Math.max(20, +$("gens").value | 0);
-      // F=0.5, CR=1.0, population=8×D — chosen from a one-factor-at-a-time sweep
-      // (F in [0.3,0.5,0.7,0.9,1.0], CR in [0.1..1.0], pop mult in [4,6,8,10,12],
-      // 30 trials each, 150 generations, default coil design, mode=max). Measured
-      // final max-deviation (mean ± stdev of 30 runs):
-      //   F    (CR=1.0, pop=8×D):  0.3→0.804±0.092  0.5→0.755±0.012  0.7→0.772±0.017
-      //                            0.9→0.782±0.018  1.0→0.789±0.048  — F=0.5 is a
-      //                            clear minimum on both mean and spread.
-      //   CR   (F=0.5, pop=8×D):   0.1→0.863±0.043 ... 0.9→0.764±0.015  1.0→0.756±0.014
-      //                            — improves monotonically with CR, best at 1.0.
-      //   pop mult (F=0.5,CR=1.0): 4×→0.776±0.064  6×→0.763±0.019  8×→0.758±0.015
-      //                            10×→0.754±0.012  12×→0.754±0.010 — diminishing
-      //                            returns past 8×D, chosen as the speed/quality tradeoff.
-      // This beat the paper-default-adjacent settings (F=0.7, CR=0.9, 6×D) on both
-      // mean and spread. Not a full grid search (one-factor-at-a-time, not
-      // exhaustive) — see README.md's "DE 하이퍼파라미터 선택 근거" section for
-      // the full tables and methodology.
-      const F = 0.5, CR = 1.0;
-      let pop, fit, di = 0, g = 0, evals = 0;
-      let bestX = null, bestF = Infinity, bestDir = dirs[0];
+      const GENS = Math.max(20, +$("gens").value | 0);
       const t0 = performance.now();
 
-      const initPop = () => {
-        pop = []; fit = [];
-        for (let i = 0; i < NPOP; i++) {
-          const v = lo.map((l, j) => l + Math.random() * (hi[j] - l));
-          pop.push(v); fit.push(objective(packFromVec(base, v, act), S0, mode, minWin, dirs[di]));
-          evals++;
-        }
-      };
-      const oneGen = () => {
-        const dir2 = dirs[di];
-        for (let i = 0; i < NPOP; i++) {
-          let a, b, c;
-          do { a = (Math.random() * NPOP) | 0; } while (a === i);
-          do { b = (Math.random() * NPOP) | 0; } while (b === i || b === a);
-          do { c = (Math.random() * NPOP) | 0; } while (c === i || c === a || c === b);
-          const jr = (Math.random() * D) | 0, trial = new Array(D);
-          for (let j = 0; j < D; j++) {
-            trial[j] = (Math.random() < CR || j === jr)
-              ? clamp(pop[a][j] + F * (pop[b][j] - pop[c][j]), lo[j], hi[j])
-              : pop[i][j];
-          }
-          const f = objective(packFromVec(base, trial, act), S0, mode, minWin, dir2);
-          evals++;
-          if (f < fit[i]) { pop[i] = trial; fit[i] = f; }
-          if (f < bestF) { bestF = f; bestX = trial.slice(); bestDir = dir2; }
-        }
-      };
-      const finish = () => {
+      const gen = optimizeDEGen(S0, act, lo, hi, { mode, minWin, dirs, gens: GENS, rng: Math.random });
+      let last = { di: 0, g: 0, GENS, dirs, bestF: Infinity, bestX: null, bestDir: dirs[0], evals: 0 };
+
+      const finish = result => {
         optRunning = false;
         $("runopt").disabled = false;
         $("optbar").style.width = "100%";
+        let { bestX, bestDir, bestObj: bestF } = result;
+        const evals = result.history.length ? result.history[result.history.length - 1].evals : 0;
         if (!bestX || bestF >= 1e5) {
           $("optlog").textContent = "No feasible solution found. Try reducing the minimum window length or widening the variable ranges.";
           return;
         }
         const fmtF = v => mode === "max" ? v.toFixed(4) + " Oe" : v.toExponential(4);
         const deF = bestF;
-        const refine = refineLocal(S0, base, act, bestX, bestDir, mode, minWin);
+        const refine = refineLocal(S0, base, act, bestX, bestDir, mode, minWin, lo, hi);
         let refineLine;
         if (refine.refined) {
           bestX = refine.vec; bestF = refine.objAfter;
@@ -1803,7 +1877,7 @@
         let soloLine = "";
         if (S0.reqSolo25) {
           const c1f = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: last1, dw: S0.dw, xc: 0, dir: S0.c1.dir };
-          const h1aloneFinal = H_pack(0, coilTurns(c1f), c1f.dir, S0.I) / OE;
+          const h1aloneFinal = H_pack(0, coilTurns(c1f), c1f.dir, p.I ?? S0.I) / OE;
           soloLine = `\nCoil 1 alone: ${h1aloneFinal.toFixed(2)} Oe (target 25±1.0)`;
         }
         $("optlog").textContent =
@@ -1824,24 +1898,21 @@ Click "Apply result" to update the parameters on the left.`;
       optRunning = true;
       $("runopt").disabled = true;
       $("applyopt").disabled = true;
-      initPop();
 
       const tick = () => {
         const t = performance.now();
+        let res;
         while (performance.now() - t < 70) {
-          oneGen(); g++;
-          if (g >= GENS) {
-            di++; g = 0;
-            if (di >= dirs.length) { finish(); return; }
-            initPop();
-          }
+          res = gen.next();
+          if (res.done) { finish(res.value); return; }
+          last = res.value;
         }
-        const frac = (di + g / GENS) / dirs.length;
+        const frac = (last.di + last.g / last.GENS) / last.dirs.length;
         $("optbar").style.width = (frac * 100).toFixed(1) + "%";
         $("optlog").textContent =
-          `Searching…  coil 2 ${dirs[di] > 0 ? "forward" : "reverse"} · generation ${g}/${GENS}` +
-          (dirs.length > 1 ? `  (stage ${di + 1}/${dirs.length})` : "") +
-          `\nCurrent best ${mode === "max" ? "max deviation" : "MSE"} = ${bestF < 1e5 ? bestF.toFixed(5) : "none yet"}`;
+          `Searching…  coil 2 ${last.dirs[last.di] > 0 ? "forward" : "reverse"} · generation ${last.g}/${last.GENS}` +
+          (last.dirs.length > 1 ? `  (stage ${last.di + 1}/${last.dirs.length})` : "") +
+          `\nCurrent best ${mode === "max" ? "max deviation" : "MSE"} = ${last.bestF < 1e5 ? last.bestF.toFixed(5) : "none yet"}`;
         setTimeout(tick, 0);
       };
       tick();
@@ -1855,6 +1926,7 @@ Click "Apply result" to update the parameters on the left.`;
       // Apply the effective last-layer counts used during optimization.
       $("l1").value = optBest.last1; $("l2").value = optBest.last2;
       $("dist").value = p.d.toFixed(1);
+      if (p.I != null) $("cur").value = p.I.toFixed(3);
       setDir(2, optBest.dir2);
       render();
     }
@@ -2050,43 +2122,6 @@ Click "Apply result" to update the parameters on the left.`;
        비선형 최소자승 (Levenberg–Marquardt)  —  실측 → 실제 코일 파라미터 역산
        ===================================================================== */
     let fitResult = null;
-
-    /* 선형계 풀이 (부분 피벗 가우스 소거) */
-    function solveLin(A, b) {
-      const n = b.length;
-      const M = A.map((r, i) => [...r, b[i]]);
-      for (let c = 0; c < n; c++) {
-        let piv = c;
-        for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
-        if (Math.abs(M[piv][c]) < 1e-14) return null;
-        [M[c], M[piv]] = [M[piv], M[c]];
-        for (let r = 0; r < n; r++) {
-          if (r === c) continue;
-          const f = M[r][c] / M[c][c];
-          for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
-        }
-      }
-      return M.map((r, i) => r[n] / r[i]);
-    }
-    /* 역행렬 (가우스-조던) */
-    function invert(A) {
-      const n = A.length;
-      const M = A.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => i === j ? 1 : 0)]);
-      for (let c = 0; c < n; c++) {
-        let piv = c;
-        for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
-        if (Math.abs(M[piv][c]) < 1e-14) return null;
-        [M[c], M[piv]] = [M[piv], M[c]];
-        const d = M[c][c];
-        for (let k = 0; k < 2 * n; k++) M[c][k] /= d;
-        for (let r = 0; r < n; r++) {
-          if (r === c) continue;
-          const f = M[r][c];
-          for (let k = 0; k < 2 * n; k++) M[r][k] -= f * M[c][k];
-        }
-      }
-      return M.map(r => r.slice(n));
-    }
 
     /* 지정한 파라미터로 모델 곡선을 만드는 함수를 돌려준다 (x는 mm) */
     function modelMaker(S0, P) {

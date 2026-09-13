@@ -3,3 +3,4 @@
 node_modules/
 *.log
 _git_잔여파일/
+/runs/

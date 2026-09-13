@@ -1,0 +1,138 @@
+﻿# 코일 벤치 대량 최적화 — 윈도우용 실행기
+# 「코일 최적화 실행.bat」이 이 파일을 호출합니다. 직접 실행하지 않아도 됩니다.
+
+$ErrorActionPreference = "Stop"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+# 이 스크립트는 runner\ 안에 있으므로, 한 단계 위(coil-bench)로 이동한다.
+Set-Location (Split-Path -Parent $PSScriptRoot)
+
+function Pause-Exit($code = 0) {
+  Write-Host ""
+  Write-Host "  아무 키나 누르면 창이 닫힙니다." -NoNewline
+  try { [void][System.Console]::ReadKey($true) } catch { Read-Host }
+  Write-Host ""
+  exit $code
+}
+
+Clear-Host
+Write-Host ""
+Write-Host "  코일 벤치 대량 최적화" -ForegroundColor White
+Write-Host "  $(Get-Location)" -ForegroundColor DarkGray
+Write-Host ""
+
+# ---- 필요한 프로그램 확인 --------------------------------------------------
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Write-Host "  Node.js가 설치되어 있지 않습니다." -ForegroundColor Red
+  Write-Host "  https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행해주세요."
+  Pause-Exit 1
+}
+
+# 윈도우는 python / py -3 / python3 중 무엇이 되는지 컴퓨터마다 다르다. 되는 것을 찾는다.
+$PyExe = $null; $PyPre = @()
+foreach ($cand in @("python", "py", "python3")) {
+  if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
+  $pre = if ($cand -eq "py") { @("-3") } else { @() }
+  try {
+    & $cand @pre "-c" "import openpyxl" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $PyExe = $cand; $PyPre = $pre; break }
+  } catch {}
+}
+if (-not $PyExe) {
+  Write-Host "  엑셀 저장에 필요한 파이썬(openpyxl)이 준비되지 않았습니다." -ForegroundColor Red
+  Write-Host "  파이썬이 없다면 https://python.org 에서 설치하시고,"
+  Write-Host "  설치되어 있다면 명령 프롬프트에 아래 한 줄을 실행한 뒤 다시 실행해주세요."
+  Write-Host ""
+  Write-Host "      pip install openpyxl"
+  Pause-Exit 1
+}
+
+# ---- 1. 도선 굵기 -----------------------------------------------------------
+Write-Host "  1. 도선 굵기를 고르세요." -ForegroundColor White
+Write-Host "     1) 0.3 mm      2) 0.4 mm      3) 0.5 mm      4) 세 가지 전부"
+$a = Read-Host "     번호 [기본 4]"
+switch ($a) {
+  "1"     { $DWS = @("0.3") }
+  "2"     { $DWS = @("0.4") }
+  "3"     { $DWS = @("0.5") }
+  default { $DWS = @("0.3", "0.4", "0.5") }
+}
+Write-Host "     -> $($DWS -join ', ') mm" -ForegroundColor Green
+Write-Host ""
+
+# ---- 2. 최적화 횟수 ---------------------------------------------------------
+Write-Host "  2. 최적화를 몇 번 반복할까요?" -ForegroundColor White
+Write-Host "     한 번에 하나씩 처음부터 다시 찾습니다. 많을수록 더 좋은 설계가 나올 확률이 올라갑니다." -ForegroundColor DarkGray
+$r = Read-Host "     횟수 [기본 120]"
+if ($r -match '^\d+$') { $RESTARTS = [int]$r } else {
+  if ($r -ne "") { Write-Host "     숫자가 아닙니다. 120으로 진행합니다." -ForegroundColor Red }
+  $RESTARTS = 120
+}
+Write-Host "     -> $RESTARTS 번" -ForegroundColor Green
+Write-Host ""
+
+# ---- 3. 전수탐색 개수 -------------------------------------------------------
+Write-Host "  3. 무작위로 계산해볼 설계를 몇 개 뽑을까요?" -ForegroundColor White
+Write-Host "     엑셀의 전수탐색 시트가 됩니다. 3만 개는 몇 초면 끝납니다. 0을 넣으면 건너뜁니다." -ForegroundColor DarkGray
+$s = Read-Host "     개수 [기본 30000]"
+if ($s -match '^\d+$') { $SWEEP = [int]$s } else {
+  if ($s -ne "") { Write-Host "     숫자가 아닙니다. 30000으로 진행합니다." -ForegroundColor Red }
+  $SWEEP = 30000
+}
+Write-Host "     -> $SWEEP 개" -ForegroundColor Green
+Write-Host ""
+
+# ---- 4. 결과 폴더 이름 ------------------------------------------------------
+$def = Get-Date -Format "yyyy-MM-dd_HHmm"
+Write-Host "  4. 결과를 어떤 이름으로 저장할까요?" -ForegroundColor White
+$NAME = Read-Host "     이름 [기본 $def]"
+if ([string]::IsNullOrWhiteSpace($NAME)) { $NAME = $def }
+$OUT = "runs/$NAME"
+Write-Host "     -> $OUT/" -ForegroundColor Green
+Write-Host ""
+
+# ---- 확인 -------------------------------------------------------------------
+$CORES = [int]$env:NUMBER_OF_PROCESSORS
+if ($CORES -lt 1) { $CORES = 4 }
+$GENS = 300
+$est = [int](($RESTARTS * 5.6 / $CORES + 15) * $DWS.Count)
+Write-Host "  ------------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host ("  예상 소요 시간: 약 {0}분 {1}초   (코어 {2}개 사용)" -f [int]($est / 60), ($est % 60), $CORES)
+Write-Host "  도중에 멈추려면 Control + C 를 누르세요." -ForegroundColor DarkGray
+Write-Host ""
+$go = Read-Host "  시작할까요? [Enter=시작, n=취소]"
+if ($go -match '^[nN]') { Write-Host "  취소했습니다."; Pause-Exit 0 }
+Write-Host ""
+
+# ---- 실행 -------------------------------------------------------------------
+$start = Get-Date
+$DIRS = @()
+foreach ($DW in $DWS) {
+  $TAG = "dw" + ($DW -replace '\.', '')
+  Write-Host "  [$DW mm] 계산 중..." -ForegroundColor White
+  & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --out "$OUT/$TAG"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  실행 중 문제가 생겼습니다." -ForegroundColor Red
+    Pause-Exit 1
+  }
+  $DIRS += "$OUT/$TAG"
+}
+
+Write-Host ""
+Write-Host "  엑셀 파일 만드는 중..." -ForegroundColor White
+$XLSX = "$OUT/코일벤치_결과_$NAME.xlsx"
+& $PyExe @PyPre runner/to_xlsx.py --out $XLSX @DIRS
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "  엑셀 저장에 실패했습니다." -ForegroundColor Red
+  Pause-Exit 1
+}
+
+$elapsed = [int]((Get-Date) - $start).TotalSeconds
+Write-Host ""
+Write-Host ("  끝났습니다. ({0}분 {1}초 걸렸습니다)" -f [int]($elapsed / 60), ($elapsed % 60)) -ForegroundColor Green
+Write-Host ""
+Write-Host "  엑셀 파일: $XLSX" -ForegroundColor White
+Write-Host "  요약 보고서는 각 굵기 폴더의 report.md 에 있습니다." -ForegroundColor DarkGray
+Write-Host ""
+try { Start-Process explorer.exe (Resolve-Path $OUT).Path } catch {}
+Pause-Exit 0
