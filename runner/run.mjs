@@ -73,6 +73,15 @@ function parseArgs(argv) {
             console.error(`--fix ${k} 값이 숫자가 아닙니다: "${pair.slice(eq + 1)}"`);
             process.exit(1);
           }
+          const spec = OPTVARS.find(x => x.k === k);
+          if (v < spec.min || v > spec.max) {
+            console.error(`--fix ${k}=${v} 범위 오류. 허용 범위: ${spec.min}~${spec.max}`);
+            process.exit(1);
+          }
+          if (spec.int && !Number.isInteger(v)) {
+            console.error(`--fix ${k}는 정수여야 합니다: ${v}`);
+            process.exit(1);
+          }
           args.fix[k] = v;
         }
         break;

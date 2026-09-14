@@ -71,9 +71,25 @@ case "$SWEEP" in ''|*[!0-9]*) echo "     ${R}숫자가 아닙니다. 30000으로
 echo "     → ${G}${SWEEP}개${N}"
 echo ""
 
-# ---- 5. 결과 폴더 이름 ----------------------------------------------------
+# ---- 5. 고정값 ------------------------------------------------------------
+echo "  ${B}5. 최적화 중 고정할 값이 있나요?${N}"
+echo "     ${D}고정한 항목은 탐색하지 않고 입력한 값을 그대로 사용합니다.${N}"
+echo "     ${D}예: R1=24 또는 R1=24,I=1   ·   없으면 Enter${N}"
+echo "     ${D}항목: R1,m1,n1,R2,m2,n2,d,I${N}"
+read -p "     고정값 [기본 없음]: " FIX_IN
+FIX_IN="$(echo "$FIX_IN" | tr -d ' ')"
+FIX_ARGS=()
+if [ -n "$FIX_IN" ]; then
+  FIX_ARGS=(--fix "$FIX_IN")
+  echo "     → ${G}${FIX_IN}${N}"
+else
+  echo "     → ${G}고정값 없음${N}"
+fi
+echo ""
+
+# ---- 6. 결과 폴더 이름 ----------------------------------------------------
 DEF="$(date +%Y-%m-%d_%H%M)"
-echo "  ${B}5. 결과를 어떤 이름으로 저장할까요?${N}"
+echo "  ${B}6. 결과를 어떤 이름으로 저장할까요?${N}"
 read -p "     이름 [기본 ${DEF}]: " NAME
 NAME="${NAME:-$DEF}"
 OUT="runs/${NAME}"
@@ -90,6 +106,7 @@ SEC=15; for t in $TURNS; do [ "$t" = "0" ] && SEC=56; done
 EST=$(( (RESTARTS * SEC / 10 / CORES + 15) * NGAUGE * NTURN ))
 echo "  ${D}------------------------------------------------------------${N}"
 echo "  실행 횟수: ${B}$(( NGAUGE * NTURN ))회${N}  (굵기 ${NGAUGE} × 턴수상한 ${NTURN})"
+echo "  고정값: ${B}${FIX_IN:-없음}${N}"
 echo "  예상 소요 시간: 약 ${B}$(( EST / 60 ))분 $(( EST % 60 ))초${N}   ${D}(코어 ${CORES}개 사용)${N}"
 echo "  ${D}도중에 멈추려면 Control + C 를 누르세요.${N}"
 echo ""
@@ -107,6 +124,7 @@ for T in $TURNS; do
     echo "  ${B}[턴수 ${T} · ${DW} mm]${N} 계산 중..."
     node runner/run.mjs --dw "$DW" --restarts "$RESTARTS" --gens "$GENS" --mc 500 \
          --sweep "$SWEEP" --workers "$CORES" --max-turns "$T" \
+         "${FIX_ARGS[@]}" \
          --out "${OUT}/${TTAG}/${TAG}" || { echo "  ${R}실행 중 문제가 생겼습니다.${N}"; pause_exit 1; }
     DIRS="$DIRS ${OUT}/${TTAG}/${TAG}"
   done

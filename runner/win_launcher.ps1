@@ -98,9 +98,25 @@ if ($s -match '^\d+$') { $SWEEP = [int]$s } else {
 Write-Host "     -> $SWEEP 개" -ForegroundColor Green
 Write-Host ""
 
-# ---- 5. 결과 폴더 이름 ------------------------------------------------------
+# ---- 5. 고정값 --------------------------------------------------------------
+Write-Host "  5. 최적화 중 고정할 값이 있나요?" -ForegroundColor White
+Write-Host "     고정한 항목은 탐색하지 않고 입력한 값을 그대로 사용합니다." -ForegroundColor DarkGray
+Write-Host "     예: R1=24 또는 R1=24,I=1   ·   없으면 Enter" -ForegroundColor DarkGray
+Write-Host "     항목: R1,m1,n1,R2,m2,n2,d,I" -ForegroundColor DarkGray
+$FIX_IN = Read-Host "     고정값 [기본 없음]"
+$FIX_IN = $FIX_IN -replace '\s', ''
+$FIX_ARGS = @()
+if (-not [string]::IsNullOrWhiteSpace($FIX_IN)) {
+  $FIX_ARGS = @("--fix", $FIX_IN)
+  Write-Host "     -> $FIX_IN" -ForegroundColor Green
+} else {
+  Write-Host "     -> 고정값 없음" -ForegroundColor Green
+}
+Write-Host ""
+
+# ---- 6. 결과 폴더 이름 ------------------------------------------------------
 $def = Get-Date -Format "yyyy-MM-dd_HHmm"
-Write-Host "  5. 결과를 어떤 이름으로 저장할까요?" -ForegroundColor White
+Write-Host "  6. 결과를 어떤 이름으로 저장할까요?" -ForegroundColor White
 $NAME = Read-Host "     이름 [기본 $def]"
 if ([string]::IsNullOrWhiteSpace($NAME)) { $NAME = $def }
 $OUT = "runs/$NAME"
@@ -116,6 +132,7 @@ $runs = $DWS.Count * $TURNS.Count
 $est = [int](($RESTARTS * $sec / $CORES + 15) * $runs)
 Write-Host "  ------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ("  실행 횟수: {0}회  (굵기 {1} x 턴수상한 {2})" -f $runs, $DWS.Count, $TURNS.Count)
+Write-Host "  고정값: $(if ($FIX_IN) { $FIX_IN } else { '없음' })"
 Write-Host ("  예상 소요 시간: 약 {0}분 {1}초   (코어 {2}개 사용)" -f [int]($est / 60), ($est % 60), $CORES)
 Write-Host "  도중에 멈추려면 Control + C 를 누르세요." -ForegroundColor DarkGray
 Write-Host ""
@@ -131,7 +148,7 @@ foreach ($T in $TURNS) {
   foreach ($DW in $DWS) {
     $TAG = "dw" + ($DW -replace '\.', '')
     Write-Host "  [턴수 $T · $DW mm] 계산 중..." -ForegroundColor White
-    & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --max-turns $T --out "$OUT/$TTAG/$TAG"
+    & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --max-turns $T @FIX_ARGS --out "$OUT/$TTAG/$TAG"
     if ($LASTEXITCODE -ne 0) {
       Write-Host "  실행 중 문제가 생겼습니다." -ForegroundColor Red
       Pause-Exit 1
