@@ -833,6 +833,9 @@
               <div class="tip" id="tip"></div>
             </div>
             <div class="legend" id="legend"></div>
+            <div class="row" style="padding:0 14px 12px">
+              <button class="act ghost" type="button" id="dlmain">Download chart (PNG)</button>
+            </div>
             <div class="chips" id="chips"></div>
             <div class="metrics" id="metrics"></div>
           </div>
@@ -843,7 +846,10 @@
               <svg class="chart" id="residchart" viewBox="0 0 760 180" role="img"
                 aria-label="Residual within the measurement window"></svg>
             </div>
-            <div class="panel-body" style="border-top:1px solid var(--line-soft)">
+            <div class="panel-body" style="border-top:1px solid var(--line-soft);padding-top:0">
+              <div class="row" style="margin-bottom:11px">
+                <button class="act ghost" type="button" id="dlresid">Download chart (PNG)</button>
+              </div>
               <p class="note" id="residnote"></p>
             </div>
           </div>
@@ -1808,6 +1814,80 @@
     }
 
     /* ========================================================================
+       차트 PNG 다운로드
+       내보낸 이미지는 앱 테마(다크모드 등)와 무관하게 항상 흰 배경·검은 글씨로
+       고정한다 — 보고서/발표자료에 붙여넣을 용도이므로, 그때 화면이 다크모드였는지에
+       좌우되면 안 된다. 축 제목·범례에 단위(mm, Oe)가 이미 SVG 텍스트로 박혀 있으므로
+       그대로 내보내면 축 이름·단위가 누락되지 않는다.
+       ===================================================================== */
+    function exportChartPng(svgId, legendId, filename) {
+      const svg = $(svgId);
+      const vb = svg.viewBox.baseVal;
+      const w = vb && vb.width ? vb.width : 760, h = vb && vb.height ? vb.height : 340;
+
+      const legendItems = [];
+      if (legendId) {
+        $(legendId).querySelectorAll("span").forEach(sp => {
+          const i = sp.querySelector("i");
+          const m = i && i.getAttribute("style") && i.getAttribute("style").match(/border-top-color:\s*([^;]+)/);
+          legendItems.push({ color: m ? m[1].trim() : "#666", label: sp.textContent.trim() });
+        });
+      }
+      const legendRowH = 22, legendH = legendItems.length ? legendRowH + 10 : 0;
+
+      const clone = svg.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const bg = document.createElementNS(SVGNS, "rect");
+      bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+      bg.setAttribute("width", String(w)); bg.setAttribute("height", String(h));
+      bg.setAttribute("fill", "#ffffff");
+      clone.insertBefore(bg, clone.firstChild);
+      // 내보낸 SVG는 독립 파일이라 페이지의 <style> 규칙(.chart text{...})을 못 보므로,
+      // 텍스트 색·글꼴을 인라인 <style>로 직접 넣어준다.
+      const style = document.createElementNS(SVGNS, "style");
+      style.textContent = "text{font-family:'IBM Plex Mono',Menlo,monospace;font-size:10px;fill:#4A443C}" +
+        ".axis-title{font-size:10.5px;fill:#1B1A18}";
+      clone.insertBefore(style, clone.firstChild);
+
+      const xml = new XMLSerializer().serializeToString(clone);
+      const svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+      const img = new Image();
+      img.onload = () => {
+        const scale = 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = w * scale; canvas.height = (h + legendH) * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(svgUrl);
+
+        if (legendItems.length) {
+          ctx.font = "12px 'IBM Plex Sans KR', sans-serif";
+          ctx.textBaseline = "middle";
+          let lx = 14, ly = h + legendH / 2 + 3;
+          legendItems.forEach(it => {
+            ctx.strokeStyle = it.color; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 16, ly); ctx.stroke();
+            ctx.fillStyle = "#1B1A18";
+            ctx.fillText(it.label, lx + 22, ly);
+            lx += 22 + ctx.measureText(it.label).width + 22;
+          });
+        }
+
+        canvas.toBlob(blob => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        }, "image/png");
+      };
+      img.onerror = () => { URL.revokeObjectURL(svgUrl); alert("Could not render this chart for download."); };
+      img.src = svgUrl;
+    }
+
+    /* ========================================================================
        메트릭 · 판정칩
        ===================================================================== */
     function renderMetrics(S, E) {
@@ -2456,6 +2536,8 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       copy([head, ...lines].join("\n"), ev.target);
     });
     $("copysum").addEventListener("click", ev => copy(summary(), ev.target));
+    $("dlmain").addEventListener("click", () => exportChartPng("mainchart", "legend", "coil-field-chart.png"));
+    $("dlresid").addEventListener("click", () => exportChartPng("residchart", null, "coil-residual-chart.png"));
     $("runfit").addEventListener("click", () => { $("fitnote").textContent = "Fitting…"; setTimeout(runFit, 20); });
     $("clearfit").addEventListener("click", () => {
       fitResult = null; $("fittable").innerHTML = "";
