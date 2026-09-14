@@ -107,6 +107,21 @@ $OUT = "runs/$NAME"
 Write-Host "     -> $OUT/" -ForegroundColor Green
 Write-Host ""
 
+# ---- 6. 고정할 변수 (선택) ---------------------------------------------------
+Write-Host "  6. 이미 확정된 값이 있으면 고정하세요. (선택 - 비워두면 전부 탐색)" -ForegroundColor White
+Write-Host "     예: R1=24  -> 코일1 반경을 24mm(직경 48mm)로 고정하고 나머지만 찾습니다." -ForegroundColor DarkGray
+Write-Host "     여러 개는 쉼표로: R1=24,I=0.48" -ForegroundColor DarkGray
+Write-Host "     사용 가능한 변수: R1,m1,n1(코일1 반경mm.층당턴수.층수), R2,m2,n2(코일2), d(간격mm), I(전류A)" -ForegroundColor DarkGray
+$FIX_IN = Read-Host "     고정할 변수 [기본: 없음]"
+if ([string]::IsNullOrWhiteSpace($FIX_IN)) {
+  Write-Host "     -> (없음 - 8개 변수 모두 탐색)" -ForegroundColor Green
+  $FixArgs = @()
+} else {
+  Write-Host "     -> $FIX_IN" -ForegroundColor Green
+  $FixArgs = @("--fix", $FIX_IN)
+}
+Write-Host ""
+
 # ---- 확인 -------------------------------------------------------------------
 $CORES = [int]$env:NUMBER_OF_PROCESSORS
 if ($CORES -lt 1) { $CORES = 4 }
@@ -117,6 +132,7 @@ $est = [int](($RESTARTS * $sec / $CORES + 15) * $runs)
 Write-Host "  ------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ("  실행 횟수: {0}회  (굵기 {1} x 턴수상한 {2})" -f $runs, $DWS.Count, $TURNS.Count)
 Write-Host ("  예상 소요 시간: 약 {0}분 {1}초   (코어 {2}개 사용)" -f [int]($est / 60), ($est % 60), $CORES)
+if (-not [string]::IsNullOrWhiteSpace($FIX_IN)) { Write-Host "  고정 변수: $FIX_IN" }
 Write-Host "  도중에 멈추려면 Control + C 를 누르세요." -ForegroundColor DarkGray
 Write-Host ""
 $go = Read-Host "  시작할까요? [Enter=시작, n=취소]"
@@ -131,7 +147,7 @@ foreach ($T in $TURNS) {
   foreach ($DW in $DWS) {
     $TAG = "dw" + ($DW -replace '\.', '')
     Write-Host "  [턴수 $T · $DW mm] 계산 중..." -ForegroundColor White
-    & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --max-turns $T --out "$OUT/$TTAG/$TAG"
+    & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --max-turns $T @FixArgs --out "$OUT/$TTAG/$TAG"
     if ($LASTEXITCODE -ne 0) {
       Write-Host "  실행 중 문제가 생겼습니다." -ForegroundColor Red
       Pause-Exit 1

@@ -22,11 +22,17 @@ function defaultS0() {
 // against the post-refactor core during the refactor itself. They are also
 // what the Calculate tab shows to the same decimal places for the shipped
 // default design.
+//
+// 2026-09-14: maxDev/rmsDev were regenerated after the target line stopped
+// being a fixed 25→10 Oe line and became the secant line through this
+// design's OWN field at x=0 and x=d (see evaluate()'s comment). h1solo and
+// Rtot are untouched by that change (neither depends on the target line) so
+// they keep their original reference values.
 test("evaluate() matches the web bench's default-design reference values", () => {
   const S0 = defaultS0();
   const E = core.evaluate(S0);
-  assert.equal(E.maxDev.toFixed(3), "7.871");
-  assert.equal(E.rmsDev.toFixed(3), "4.664");
+  assert.equal(E.maxDev.toFixed(3), "2.602");
+  assert.equal(E.rmsDev.toFixed(3), "1.445");
   assert.equal(E.h1solo.toFixed(2), "29.31");
   assert.equal(E.Rtot.toFixed(2), "4.98");
 });
