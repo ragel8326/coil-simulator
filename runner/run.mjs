@@ -5,26 +5,30 @@
 // See ../README.md and the implementation spec this was built from for the
 // rationale behind each stage.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { parallelMultiStart, neighborSearch, searchVars, STRUCT_VARS, NEIGHBOR_VARS } from "./search.mjs";
+import { parallelMultiStart, neighborSearch, searchVars, STRUCT_VARS, NEIGHBOR_VARS, enumerateCoil1 } from "./search.mjs";
+import { OPTVARS } from "./core.mjs";
+import { currentDensity } from "./constraints.mjs";
 import { reRankByRobustness } from "./robust.mjs";
 import { randomSweep } from "./sweep.mjs";
 import { gapSweep } from "./gapsweep.mjs";
-import { rankCompare, FIELD_RESOLUTION_OE } from "./ranking.mjs";
+import { rankCompare } from "./ranking.mjs";
 import { writeRawJsonl, writeTopCsv, writeConvergenceCsv, writeReportMd, writeGapSweepCsv } from "./report.mjs";
 
 function parseArgs(argv) {
   const args = {
-    dw: [0.3, 0.4, 0.5],
+    dw: [0.4, 0.5],
     restarts: 30,
     gens: 300,   // 탐색 범위를 넓힌 만큼 세대 수도 올렸다 (2026-09-13)
-    objective: "max",
+    objective: "mse",
+    current: 1,
+    enumerateCoil1: false,
     mc: 500,
     workers: 1,
     out: `runs/${new Date().toISOString().slice(0, 10)}`,
     minWin: 20,
     top: 20,
     dimStep: 0.1,      // 설계 치수 격자 (mm). 0 이면 격자 없음
-    maxTurns: 0,       // 코일 하나당 총 턴수 상한 (0 = 무제한)
+    maxTurns: 200,     // 팀 확정값: 코일 하나당 총 턴수 상한
     candidates: 50,   // 공차 검사까지 넘길 상위 설계 수 (예전에는 10개로 고정돼 있었다)
     sweep: 30000,
     fix: {},           // 고정할 변수 (예: {R1: 24}) — --fix 로 설정, 비어있으면 8개 변수 모두 탐색
@@ -37,6 +41,8 @@ function parseArgs(argv) {
       case "--restarts": args.restarts = +next(); break;
       case "--gens": args.gens = +next(); break;
       case "--objective": args.objective = next(); break;
+      case "--current": args.current = +next(); break;
+      case "--enumerate-coil1": args.enumerateCoil1 = true; break;
       case "--mc": args.mc = +next(); break;
       case "--workers": args.workers = +next(); break;
       case "--out": args.out = next(); break;
@@ -50,7 +56,7 @@ function parseArgs(argv) {
         // "--fix R1=24" 또는 "--fix R1=24,m1=50" 처럼 쉼표로 여러 개.
         // 팀이 코일1 반경을 48mm(반경 24mm)로 확정한 경우: --fix R1=24
         const raw = next();
-        const knownKeys = STRUCT_VARS.map(v => v.k);
+        const knownKeys = OPTVARS.map(v => v.k);
         for (const pair of raw.split(",")) {
           const eq = pair.indexOf("=");
           if (eq <= 0) {
@@ -117,29 +123,58 @@ function applyFix(S0, fix) {
 
 async function runForWireGauge(dw, args, rawSink) {
   const S0 = defaultS0(dw);
+  S0.I = args.current;
   S0.maxTurns = args.maxTurns || 0;
   S0.dimStep = args.dimStep ?? 0.1;
   applyFix(S0, args.fix);
+  if (args.enumerateCoil1 && !("R1" in args.fix)) {
+    throw new Error("--enumerate-coil1 requires a fixed R1 (for example --fix R1=24)");
+  }
   const act = searchVars(STRUCT_VARS, args.fix);
   const lo = act.map(v => v.min), hi = act.map(v => v.max);
   const dirs = [1, -1];
   const opts = { restarts: args.restarts, gens: args.gens, mode: args.objective, minWin: args.minWin, dirs, workers: args.workers };
 
-  process.stderr.write(`\n[dw=${dw}mm] Stage A: ${args.restarts} restarts × ${args.gens} generations...\n`);
+  process.stderr.write(`\n[dw=${dw}mm] Stage A: ${args.restarts} restarts × ${args.gens} generations${args.enumerateCoil1 ? " with coil-1 enumeration" : ""}...\n`);
   let done = 0;
-  const { runs, convergence } = await parallelMultiStart(S0, act, lo, hi, {
-    ...opts,
-    onSeed: (record) => {
-      done++;
-      rawSink.push({ stage: "A", dw_mm: dw, ...record });
-      if (done % 5 === 0 || done === args.restarts) {
-        process.stderr.write(`  [dw=${dw}mm] ${done}/${args.restarts} seeds done\n`);
-      }
-    },
-  });
+  const onSeed = record => {
+    done++;
+    rawSink.push({ stage: "A", dw_mm: dw, ...record });
+    if (done % 5 === 0 || done === args.restarts) process.stderr.write(`  [dw=${dw}mm] ${done}/${args.restarts} seeds done\n`);
+  };
+  let runs, convergence, coil1Choices = [];
+  if (!args.enumerateCoil1) {
+    ({ runs, convergence } = await parallelMultiStart(S0, act, lo, hi, { ...opts, onSeed }));
+  } else {
+    coil1Choices = enumerateCoil1(S0);
+    if (args.restarts < coil1Choices.length) {
+      throw new Error(`--enumerate-coil1 needs at least ${coil1Choices.length} restarts so every Task-1 pair is searched`);
+    }
+    runs = [];
+    let seedStart = 0;
+    const enumAct = act.filter(v => v.k !== "m1" && v.k !== "n1");
+    const enumLo = enumAct.map(v => v.min), enumHi = enumAct.map(v => v.max);
+    for (let i = 0; i < coil1Choices.length; i++) {
+      const choice = coil1Choices[i];
+      const count = Math.floor(args.restarts / coil1Choices.length) + (i < args.restarts % coil1Choices.length ? 1 : 0);
+      const enumS0 = { ...S0, c1: { ...S0.c1, m: choice.m1, n: choice.n1, last: choice.m1 } };
+      const part = await parallelMultiStart(enumS0, enumAct, enumLo, enumHi, { ...opts, restarts: count, seedStart, onSeed });
+      runs.push(...part.runs);
+      seedStart += count;
+    }
+    convergence = [];
+    let bestSoFar = Infinity;
+    for (let i = 0; i < runs.length; i++) {
+      if (runs[i].feasible && runs[i].obj < bestSoFar) bestSoFar = runs[i].obj;
+      convergence.push({ n: i + 1, bestSoFar });
+    }
+  }
 
   const feasible = runs.filter(r => r.feasible);
-  feasible.sort(rankCompare(r => r.obj));
+  // Both supported optimizer objectives are dimensionless after endpoint-drop
+  // normalization. The 0.1 Oe instrument grid belongs only to report metrics.
+  const objectiveResolution = 0;
+  feasible.sort(rankCompare(r => r.obj, objectiveResolution));
   const topN = feasible.slice(0, Math.max(1, args.candidates));
 
   if (args.sweep > 0) {
@@ -152,7 +187,9 @@ async function runForWireGauge(dw, args, rawSink) {
   // 팀은 보빈을 정수 mm 로 만들기로 했으므로, 실제로 제작할 설계는 정수 mm 쪽이다.
   // 소수점 설계와 따로 모아 자기들끼리 공차 재랭킹까지 거쳐 순위를 매긴다.
   const stageBint = [];
-  const neighborVars = searchVars(NEIGHBOR_VARS, args.fix);
+  // In enumeration mode m1/n1 identify the enumerated Task-1 choice and must
+  // remain fixed through Stage B as well as Stage A.
+  const neighborVars = searchVars(NEIGHBOR_VARS, args.enumerateCoil1 ? { ...args.fix, m1: 1, n1: 1 } : args.fix);
   for (const cand of topN) {
     const cont = neighborSearch(S0, neighborVars, cand.params, args.objective, args.minWin, { contStep: 0.1 });
     rawSink.push({ stage: "B-continuous", dw_mm: dw, seed: cand.seed, ...cont });
@@ -165,7 +202,9 @@ async function runForWireGauge(dw, args, rawSink) {
         feasible: snapped.feasible, softOk: snapped.softOk, params: snapped.params, metrics: snapped.metrics });
     }
   }
-  const byRank = rankCompare(r => r.obj);
+  // rankCompare only applies softOk when a pair differs; if every candidate
+  // has the same value (as at fixed 1 A), the criterion is automatically skipped.
+  const byRank = rankCompare(r => r.obj, objectiveResolution);
   stageB.sort(byRank);
   stageBint.sort(byRank);
 
@@ -198,7 +237,10 @@ async function runForWireGauge(dw, args, rawSink) {
   }
 
   return {
-    dw, maxTurns: args.maxTurns || 0, dimStep: S0.dimStep, fix: args.fix, restarts: args.restarts, feasibleCount: feasible.length,
+    dw, current: S0.I, currentDensity: currentDensity(S0), maxTurns: args.maxTurns || 0, dimStep: S0.dimStep, fix: args.fix,
+    enumerateCoil1: args.enumerateCoil1, coil1ChoiceCount: coil1Choices.length, restarts: args.restarts, feasibleCount: feasible.length,
+    refinedRate: runs.length ? runs.filter(r => r.refined).length / runs.length : 0,
+    deObjectiveCalls: runs.reduce((s, r) => s + (r.deObjectiveCalls || 0), 0),
     softOkCount: feasible.filter(r => r.softOk !== false).length,
     bestNominal: feasible.length ? feasible[0].obj : null,
     bestRobust: stageC.length ? stageC[0].robust.p95MaxDev : null,
@@ -232,7 +274,9 @@ async function main() {
   if (rawSink.sweep.length) writeRawJsonl(`${args.out}/sweep.jsonl`, rawSink.sweep);
   writeFileSync(`${args.out}/summary.json`, JSON.stringify(
     dwResults.map(r => ({
-      dw: r.dw, maxTurns: r.maxTurns, dimStep: r.dimStep, fix: r.fix, restarts: r.restarts, feasibleCount: r.feasibleCount,
+      dw: r.dw, current: r.current, currentDensity: r.currentDensity, maxTurns: r.maxTurns, dimStep: r.dimStep, fix: r.fix,
+      enumerateCoil1: r.enumerateCoil1, coil1ChoiceCount: r.coil1ChoiceCount, restarts: r.restarts,
+      feasibleCount: r.feasibleCount, refinedRate: r.refinedRate, deObjectiveCalls: r.deObjectiveCalls,
       softOkCount: r.softOkCount,
       bestNominal: r.bestNominal, bestRobust: r.bestRobust, snapDelta: r.snapDelta,
       bestIntegerNominal: r.bestIntegerNominal, bestIntegerRobust: r.bestIntegerRobust,
@@ -258,7 +302,7 @@ async function main() {
 
   process.stderr.write(`\nDone. Output written to ${args.out}/{raw.jsonl,sweep.jsonl,top.csv,top_integer.csv,gap_sweep.csv,convergence.csv,summary.json,report.md}\n`);
   for (const r of dwResults) {
-    process.stderr.write(`  dw=${r.dw}mm: ${r.feasibleCount}/${r.restarts} feasible, best nominal max-dev = ${r.bestNominal ?? "none"}\n`);
+    process.stderr.write(`  dw=${r.dw}mm: ${r.feasibleCount}/${r.restarts} feasible, best normalized objective = ${r.bestNominal ?? "none"}\n`);
   }
 }
 

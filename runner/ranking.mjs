@@ -17,10 +17,13 @@ export function rankCompare(getMetric, res = FIELD_RESOLUTION_OE) {
     // 1순위: 전류밀도 소프트 한계를 넘지 않은 설계
     const sa = a.softOk === false ? 1 : 0, sb = b.softOk === false ? 1 : 0;
     if (sa !== sb) return sa - sb;
-    // 2순위: 측정으로 구분 가능한 수준의 성능
+    // 2순위: 요청된 성능 지표. Oe 지표에는 측정 분해능을 적용하고,
+    // 무차원 최적화 목적에는 res=0으로 정확한 값을 비교한다.
     const va = getMetric(a), vb = getMetric(b);
-    const qa = Math.round((isFinite(va) ? va : 1e9) / res);
-    const qb = Math.round((isFinite(vb) ? vb : 1e9) / res);
+    // res=0 is used for a dimensionless optimizer objective. The 0.1 Oe
+    // instrument grid only applies to field-valued metrics such as maxDev.
+    const qa = res > 0 ? Math.round((isFinite(va) ? va : 1e9) / res) : (isFinite(va) ? va : 1e9);
+    const qb = res > 0 ? Math.round((isFinite(vb) ? vb : 1e9) / res) : (isFinite(vb) ? vb : 1e9);
     if (qa !== qb) return qa - qb;
     // 3순위: 감기 쉬운 쪽
     const ta = turnsOf(a), tb = turnsOf(b);

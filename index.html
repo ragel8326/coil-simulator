@@ -1131,15 +1131,23 @@
         const u = i / (nWin - 1);
         wt.push(hAt0 + (hAtD - hAt0) * u);
       }
-      let maxDev = 0, sse = 0, thinDiffPct = 0;
+      // Feasible endpoint fields differ by at least 13 Oe (24..26 versus
+      // 9..11), so the 1 Oe floor only prevents 0/0 for flat, infeasible
+      // trial designs. It never changes a design that satisfies Task 3.
+      const fieldDrop = Math.max(Math.abs(hAt0 - hAtD), 1.0);
+      let maxDev = 0, sse = 0, normMaxDev = 0, normSse = 0, thinDiffPct = 0;
       for (let i = 0; i < nWin; i++) {
         const e = wm[i] - wt[i];
         if (Math.abs(e) > maxDev) maxDev = Math.abs(e);
         sse += e * e;
+        const re = e / fieldDrop;
+        if (Math.abs(re) > normMaxDev) normMaxDev = Math.abs(re);
+        normSse += re * re;
         const td = Math.abs(wm[i] - wthin[i]) / Math.max(1e-9, Math.abs(wthin[i])) * 100;
         if (td > thinDiffPct) thinDiffPct = td;
       }
       const rmsDev = Math.sqrt(sse / nWin);
+      const normRmsDev = Math.sqrt(normSse / nWin);
 
       // 자유 직선 최소자승 피팅 → 비선형성(전류를 조정해도 못 없애는 성분)
       const fit = lsq(wx, wm);
@@ -1162,7 +1170,7 @@
       const infl = findInflection(total, xa, xb);
 
       return {
-        T1, T2, total, thin, wx, wm, wt, wthin, maxDev, rmsDev, nonlin, fit, thinDiffPct,
+        T1, T2, total, thin, wx, wm, wt, wthin, maxDev, rmsDev, normMaxDev, normRmsDev, nonlin, fit, thinDiffPct,
         L1, L2, R1o, R2o, Rtot, P, V, h1solo, hAt0, hAtD, infl,
         N1: turnCount(S.c1), N2: turnCount(S.c2), span
       };
@@ -1255,7 +1263,7 @@
       return o;
     }
 
-    function objective(p, S0, mode, minWin, dir2) {
+    function objectiveTerms(p, S0, minWin, dir2) {
       const dw = S0.dw;
       // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
       // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
@@ -1269,7 +1277,7 @@
       const c2 = { R: R2s / 1000, m: t2.m, n: t2.n, last: Math.min(t2.m, S0.c2.last), dw, xc: ds / 1000, dir: dir2 };
       // Window is always [0, d] — the segment between the two coil centers — not a free variable.
       const xa = 0, xb = ds / 1000;
-      if (!(xb - xa >= minWin / 1000)) return 1e6;
+      if (!(xb - xa >= minWin / 1000)) return null;
       const T1 = coilTurns(c1), T2 = coilTurns(c2);
       // NP=61 — chosen from a convergence check across 200 random designs in the
       // search space (vs a NP=4001 "ground truth"): sampling error keeps shrinking
@@ -1278,26 +1286,54 @@
       // thickness 0.2-3%, geomagnetic background up to 5%), while DE runtime is
       // still negligible. Going higher buys precision nothing else in the project
       // can use. Not written up elsewhere in this repo — this comment is the record.
-      const NP = 61; let maxd = 0, sse = 0;
+      const NP = 61, shapeResiduals = new Array(NP);
       const hAtXa = (H_pack(xa, T1, c1.dir, I) + H_pack(xa, T2, c2.dir, I)) / OE;
       const hAtXb = (H_pack(xb, T1, c1.dir, I) + H_pack(xb, T2, c2.dir, I)) / OE;
+      // A feasible Task-3 design has a 13..17 Oe endpoint drop. The 1 Oe
+      // floor is solely a safe denominator for flat, infeasible trial shapes.
+      const fieldDrop = Math.max(Math.abs(hAtXa - hAtXb), 1.0);
       for (let i = 0; i < NP; i++) {
         const u = i / (NP - 1), x = xa + (xb - xa) * u;
         const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
         const t = hAtXa + (hAtXb - hAtXa) * u;
-        const e = h - t; sse += e * e; if (Math.abs(e) > maxd) maxd = Math.abs(e);
+        shapeResiduals[i] = (h - t) / fieldDrop;
       }
       // A hard 1e6 gate made almost the whole initial population identical,
       // leaving DE no direction in which to improve.  This continuous penalty
       // preserves the ±1 Oe feasible band while still guiding distant designs
       // toward the nominal 25/10 Oe endpoint requirements.
-      const startExcess = Math.max(0, Math.abs(hAtXa - S0.h1) - 1.0);
-      const endExcess = Math.max(0, Math.abs(hAtXb - S0.h2) - 1.0);
+      const endpointTolerance = 1.0;
+      const startExcess = Math.max(0, Math.abs(hAtXa - S0.h1) - endpointTolerance) / endpointTolerance;
+      const endExcess = Math.max(0, Math.abs(hAtXb - S0.h2) - endpointTolerance) / endpointTolerance;
       const h1alone = H_pack(0, T1, c1.dir, I) / OE;
-      const solo25Excess = S0.reqSolo25 ? Math.max(0, Math.abs(h1alone - 25) - 1.0) : 0;
+      const solo25Excess = S0.reqSolo25
+        ? Math.max(0, Math.abs(h1alone - 25) - endpointTolerance) / endpointTolerance
+        : 0;
+      return { NP, shapeResiduals, startExcess, endExcess, solo25Excess };
+    }
+
+    // LM consumes exactly these residuals. Therefore sum(e^2)/NP is
+    // algebraically identical to objective(..., "mse", ...), including the
+    // dimensionless endpoint penalties.
+    function objectiveResiduals(p, S0, minWin, dir2) {
+      const q = objectiveTerms(p, S0, minWin, dir2);
+      if (!q) return null;
+      const penaltyScale = Math.sqrt(q.NP * 100);
+      return q.shapeResiduals.concat([
+        penaltyScale * q.startExcess,
+        penaltyScale * q.endExcess,
+        penaltyScale * q.solo25Excess,
+      ]);
+    }
+
+    function objective(p, S0, mode, minWin, dir2) {
+      const q = objectiveTerms(p, S0, minWin, dir2);
+      if (!q) return 1e6;
+      let maxd = 0, sse = 0;
+      for (const r of q.shapeResiduals) { maxd = Math.max(maxd, Math.abs(r)); sse += r * r; }
       const v = mode === "max"
-        ? maxd + 10 * (startExcess + endExcess + solo25Excess)
-        : sse / NP + 100 * (startExcess * startExcess + endExcess * endExcess + solo25Excess * solo25Excess);
+        ? maxd + 10 * (q.startExcess + q.endExcess + q.solo25Excess)
+        : sse / q.NP + 100 * (q.startExcess * q.startExcess + q.endExcess * q.endExcess + q.solo25Excess * q.solo25Excess);
       return v;
     }
 
@@ -1313,7 +1349,10 @@
       const cLo = contIdx.map(i => Math.min(lo[i], hi[i]));
       const cHi = contIdx.map(i => Math.max(lo[i], hi[i]));
 
-      const dw = S0.dw, NP = 61, NR = NP + 3, m = contIdx.length;
+      const NP = 61, NR = NP + 3, m = contIdx.length;
+      // LM must see continuous geometry. DE and neighborSearch still use the
+      // original 0.1 mm grid; only this private state disables snapping.
+      const continuousS0 = { ...S0, dimStep: 0 };
       const vecFromPc = pc => {
         const vec = bestX.slice();
         contIdx.forEach((idx, j) => { vec[idx] = pc[j]; });
@@ -1321,36 +1360,7 @@
       };
       const residuals = pc => {
         const p = packFromVec(base, vecFromPc(pc), act);
-        const I = p.I ?? S0.I;
-        // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
-        // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
-        // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
-        const g = S0.dimStep;
-        const R1s = snapDim(p.R1, g), R2s = snapDim(p.R2, g), ds = snapDim(p.d, g);
-        const r1 = capTurns(Math.max(1, p.m1), Math.max(1, p.n1), S0.maxTurns);
-        const r2 = capTurns(Math.max(1, p.m2), Math.max(1, p.n2), S0.maxTurns);
-        const c1 = { R: R1s / 1000, m: r1.m, n: r1.n, last: Math.min(r1.m, S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
-        const c2 = { R: R2s / 1000, m: r2.m, n: r2.n, last: Math.min(r2.m, S0.c2.last), dw, xc: ds / 1000, dir: bestDir };
-        const T1 = coilTurns(c1), T2 = coilTurns(c2);
-        const xa = 0, xb = ds / 1000;
-        const hAtXa = (H_pack(xa, T1, c1.dir, I) + H_pack(xa, T2, c2.dir, I)) / OE;
-        const hAtXb = (H_pack(xb, T1, c1.dir, I) + H_pack(xb, T2, c2.dir, I)) / OE;
-        const h1alone = H_pack(0, T1, c1.dir, I) / OE;
-        const e = new Array(NR);
-        for (let i = 0; i < NP; i++) {
-          const u = i / (NP - 1), x = xa + (xb - xa) * u;
-          const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
-          const t = hAtXa + (hAtXb - hAtXa) * u;
-          e[i] = h - t;
-        }
-        // sqrt(NP*100) makes the squared residuals match objective()'s
-        // endpoint penalty after the shape SSE is normalized by NP.
-        const penaltyScale = Math.sqrt(NP * 100);
-        const signedExcess = (h, target) => Math.sign(h - target) * Math.max(0, Math.abs(h - target) - 1.0);
-        e[NP] = penaltyScale * signedExcess(hAtXa, S0.h1);
-        e[NP + 1] = penaltyScale * signedExcess(hAtXb, S0.h2);
-        e[NP + 2] = S0.reqSolo25 ? penaltyScale * signedExcess(h1alone, 25) : 0;
-        return e;
+        return objectiveResiduals(p, continuousS0, minWin, bestDir) || new Array(NR).fill(1e6);
       };
       const sse = pc => { const e = residuals(pc); let s = 0; for (let i = 0; i < e.length; i++) s += e[i] * e[i]; return s; };
 
@@ -1406,7 +1416,23 @@
         if (!stepped || converged) break;
       }
 
+      // A nearly flat Jacobian direction can drift all the way to a bound.
+      // If that happens, keep the useful LM moves in other coordinates but
+      // restore only the bound-hitting coordinate to its DE value.
+      for (let j = 0; j < m; j++) {
+        const eps = Math.max(1e-9, (cHi[j] - cLo[j]) * 1e-9);
+        if (pc[j] <= cLo[j] + eps || pc[j] >= cHi[j] - eps) pc[j] = bestX[contIdx[j]];
+      }
       const vec = vecFromPc(pc);
+      for (const idx of contIdx) {
+        if (["R1", "R2", "d"].includes(act[idx].k)) {
+          vec[idx] = snapDim(vec[idx], S0.dimStep);
+          const j = contIdx.indexOf(idx);
+          // Snapping can turn a value merely close to a fence into the exact
+          // fence. Treat that as the same flat-direction symptom.
+          if ((vec[idx] === cLo[j] || vec[idx] === cHi[j]) && bestX[idx] !== vec[idx]) vec[idx] = bestX[idx];
+        }
+      }
       const p = packFromVec(base, vec, act);
       const objAfter = objective(p, S0, mode, minWin, bestDir);
       if (!(objAfter < 1e5)) return { vec: bestX, refined: false, objAfter: objBefore, reason: "Refinement result violates constraints" };
@@ -1463,7 +1489,7 @@
           yield { di, g, GENS, dirs, bestF, bestX, bestDir, evals };
         }
       }
-      return { bestX, bestDir, bestObj: bestF, history };
+      return { bestX, bestDir, bestObj: bestF, history, evals };
     }
 
     /* optimizeDEGen을 끝까지 동기적으로 돌린다(러너 및 테스트용).
@@ -1903,6 +1929,22 @@
       const gen = optimizeDEGen(S0, act, lo, hi, { mode, minWin, dirs, gens: GENS, rng: Math.random });
       let last = { di: 0, g: 0, GENS, dirs, bestF: Infinity, bestX: null, bestDir: dirs[0], evals: 0 };
 
+      // The DE/LM objective is now dimensionless (endpoint-drop normalized —
+      // see objective()'s comments), so it can no longer be labeled "Oe"
+      // directly. Re-evaluate the actual design to get a real Oe figure for
+      // display; the dimensionless value still drives the search itself.
+      const actualMaxDev = (vec, dir2) => {
+        const pp = packFromVec(base, vec, act);
+        const l1 = Math.min(Math.max(1, pp.m1), S0.c1.last), l2 = Math.min(Math.max(1, pp.m2), S0.c2.last);
+        const c1x = { R: pp.R1 / 1000, m: Math.max(1, pp.m1), n: Math.max(1, pp.n1), last: l1, dw: S0.dw, xc: 0, dir: S0.c1.dir };
+        const c2x = { R: pp.R2 / 1000, m: Math.max(1, pp.m2), n: Math.max(1, pp.n2), last: l2, dw: S0.dw, xc: pp.d / 1000, dir: dir2 };
+        const Sx = {
+          I: pp.I ?? S0.I, dw: S0.dw, d: pp.d / 1000, c1: c1x, c2: c2x, xa: 0, xb: pp.d / 1000,
+          h1: S0.h1, h2: S0.h2, jsafe: S0.jsafe, reqSolo25: S0.reqSolo25
+        };
+        return evaluate(Sx).maxDev;
+      };
+
       const finish = result => {
         optRunning = false;
         $("runopt").disabled = false;
@@ -1913,14 +1955,15 @@
           $("optlog").textContent = "No feasible solution found. Try reducing the minimum window length or widening the variable ranges.";
           return;
         }
-        const fmtF = v => mode === "max" ? v.toFixed(4) + " Oe" : v.toExponential(4);
         const deF = bestF;
+        const deActualDev = actualMaxDev(bestX, bestDir);
         const refine = refineLocal(S0, base, act, bestX, bestDir, mode, minWin, lo, hi);
         let refineLine;
         if (refine.refined) {
           bestX = refine.vec; bestF = refine.objAfter;
           const improvePct = Math.abs(deF) > 0 ? ((deF - bestF) / Math.abs(deF) * 100) : 0;
-          refineLine = `Step 1 DE = ${fmtF(deF)} → step 2 local refinement = ${fmtF(bestF)} (improved ${improvePct.toFixed(2)}%)`;
+          const refinedActualDev = actualMaxDev(bestX, bestDir);
+          refineLine = `Step 1 DE actual max deviation = ${deActualDev.toFixed(4)} Oe → step 2 local refinement = ${refinedActualDev.toFixed(4)} Oe (objective improved ${improvePct.toFixed(2)}%)`;
         } else {
           refineLine = `Refinement skipped: ${refine.reason}`;
         }
@@ -1937,8 +1980,9 @@
           const h1aloneFinal = H_pack(0, coilTurns(c1f), c1f.dir, p.I ?? S0.I) / OE;
           soloLine = `\nCoil 1 alone: ${h1aloneFinal.toFixed(2)} Oe (target 25±1.0)`;
         }
+        const finalActualDev = actualMaxDev(bestX, bestDir);
         $("optlog").textContent =
-          `Done.  ${mode === "max" ? "Max deviation" : "MSE"} = ${mode === "max" ? bestF.toFixed(4) + " Oe" : bestF.toExponential(4)}
+          `Done.  Actual max deviation = ${finalActualDev.toFixed(4)} Oe  (internal ${mode === "max" ? "max-deviation" : "MSE"} objective = ${mode === "max" ? bestF.toFixed(4) : bestF.toExponential(4)}, dimensionless)
 Evaluations ${evals.toLocaleString()} · elapsed ${((performance.now() - t0) / 1000).toFixed(1)} s
 ${refineLine}${soloLine}
 
@@ -1969,7 +2013,7 @@ Click "Apply result" to update the parameters on the left.`;
         $("optlog").textContent =
           `Searching…  coil 2 ${last.dirs[last.di] > 0 ? "forward" : "reverse"} · generation ${last.g}/${last.GENS}` +
           (last.dirs.length > 1 ? `  (stage ${last.di + 1}/${last.dirs.length})` : "") +
-          `\nCurrent best ${mode === "max" ? "max deviation" : "MSE"} = ${last.bestF < 1e5 ? last.bestF.toFixed(5) : "none yet"}`;
+          `\nCurrent best internal objective (dimensionless ${mode === "max" ? "max-dev" : "MSE"}) = ${last.bestF < 1e5 ? last.bestF.toFixed(5) : "none yet"}`;
         setTimeout(tick, 0);
       };
       tick();

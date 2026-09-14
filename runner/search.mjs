@@ -10,12 +10,10 @@ import { mulberry32 } from "./rng.mjs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 
-// All searchable variables including current I, in OPTVARS order. This is
-// the runner's default search set (wider than the web UI's default checked
-// subset). I must stay searchable here: current density = I / wireArea does
-// not depend on R/m/n/d at all, so at dw=0.3/0.4mm the safe-current-density
-// constraint is only satisfiable at all by lowering I below the 1A cap.
-export const STRUCT_VARS = OPTVARS;
+// The assignment says to assume approximately 1 A, and the team fixed I at
+// 1 A on 2026-09-14. Keep I in OPTVARS (web checkbox and --fix I remain
+// available), but do not move it in the runner's default structural search.
+export const STRUCT_VARS = OPTVARS.filter(v => v.k !== "I");
 
 // Removes any variable the caller has pinned to a fixed value (see run.mjs
 // --fix) from a search-variable list. The fixed value itself doesn't live
@@ -34,6 +32,21 @@ export function searchVars(vars, fix) {
 // omits it and because I's own range (0.1-1.0A) is too narrow relative to a
 // +-1.0-unit neighbor window to grid-search sensibly.
 export const NEIGHBOR_VARS = OPTVARS.filter(v => v.k !== "I");
+
+// With R1 and current fixed, Task 1 is cheap and exact enough to enumerate.
+// Every returned pair is a full-layer winding and already respects maxTurns.
+export function enumerateCoil1(S0) {
+  const out = [];
+  for (let m1 = 1; m1 <= 80; m1++) {
+    for (let n1 = 1; n1 <= 40; n1++) {
+      if (S0.maxTurns > 0 && m1 * n1 > S0.maxTurns) continue;
+      const c1 = { ...S0.c1, m: m1, n: n1, last: m1 };
+      const h1solo = H_pack(c1.xc, coilTurns(c1), 1, S0.I) / OE;
+      if (Math.abs(h1solo - 25) <= 1.0) out.push({ m1, n1, h1solo });
+    }
+  }
+  return out;
+}
 
 function baseFromS0(S0) {
   return {
@@ -104,14 +117,14 @@ export function runSeed(S0, act, lo, hi, seed, { gens, mode, minWin, dirs }) {
   const ms = Date.now() - t0;
 
   if (!p) {
-    return { seed, feasible: false, obj: Infinity, refined: false, params: null, metrics: null, ms };
+    return { seed, feasible: false, obj: Infinity, refined: false, deObjectiveCalls: de.evals, params: null, metrics: null, ms };
   }
   const { S, E, feasible, softOk, violations, currentDensityValue } = evalDesign(S0, p, bestDir);
   return {
-    seed, feasible, softOk, obj: objAfterRefine, refined, violations,
+    seed, feasible, softOk, obj: objAfterRefine, refined, deObjectiveCalls: de.evals, violations,
     params: builtParams(S, p, bestDir),
     metrics: {
-      maxDev: E.maxDev, rmsDev: E.rmsDev, nonlin: E.nonlin,
+      maxDev: E.maxDev, rmsDev: E.rmsDev, normMaxDev: E.normMaxDev, normRmsDev: E.normRmsDev, nonlin: E.nonlin,
       h1solo: E.h1solo, hAt0: E.hAt0, hAtD: E.hAtD,
       Rtot: E.Rtot, P: E.P, V: E.V, wireLen: E.L1 + E.L2,
       N1: E.N1, N2: E.N2,
@@ -130,12 +143,12 @@ export function runSeed(S0, act, lo, hi, seed, { gens, mode, minWin, dirs }) {
   };
 }
 
-export function multiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, onSeed } = {}) {
+export function multiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, onSeed, seedStart = 0 } = {}) {
   const runs = [];
   const convergence = []; // best-so-far objective after each seed, in seed order
   let bestSoFar = Infinity;
 
-  for (let seed = 0; seed < restarts; seed++) {
+  for (let seed = seedStart; seed < seedStart + restarts; seed++) {
     const record = runSeed(S0, act, lo, hi, seed, { gens, mode, minWin, dirs });
     runs.push(record);
     if (record.feasible && record.obj < bestSoFar) bestSoFar = record.obj;
@@ -152,8 +165,8 @@ const WORKER_PATH = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 // concurrency). Falls back to the sequential path when workers <= 1.
 // Sequential and parallel runs of the same seeds are identical since
 // runSeed() is a pure function of (S0, act, lo, hi, seed, opts).
-export function parallelMultiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, workers = 1, onSeed } = {}) {
-  if (workers <= 1) return multiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, onSeed });
+export function parallelMultiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, workers = 1, onSeed, seedStart = 0 } = {}) {
+  if (workers <= 1) return multiStart(S0, act, lo, hi, { restarts, gens, mode, minWin, dirs, onSeed, seedStart });
 
   return new Promise((resolve, reject) => {
     const results = new Array(restarts);
@@ -179,7 +192,7 @@ export function parallelMultiStart(S0, act, lo, hi, { restarts, gens, mode, minW
         if (active === 0) finish();
         return;
       }
-      const seed = nextSeed++;
+      const seed = seedStart + nextSeed++;
       active++;
       const worker = new Worker(WORKER_PATH, { workerData: { S0, act, lo, hi, seed, opts } });
       worker.once("message", msg => {
@@ -187,7 +200,7 @@ export function parallelMultiStart(S0, act, lo, hi, { restarts, gens, mode, minW
         worker.terminate();
         if (settled) return;
         if (!msg.ok) { settled = true; reject(new Error("worker failed on seed " + msg.seed + ": " + msg.error)); return; }
-        results[msg.record.seed] = msg.record;
+        results[msg.record.seed - seedStart] = msg.record;
         if (onSeed) onSeed(msg.record, msg.record.seed, restarts);
         launchNext();
       });
@@ -298,7 +311,7 @@ export function neighborSearch(S0, act, seedParams, mode, minWin,
     params: builtParams(S, cur, dir2),
     obj: curObj, feasible, violations,
     metrics: {
-      maxDev: E.maxDev, rmsDev: E.rmsDev, nonlin: E.nonlin,
+      maxDev: E.maxDev, rmsDev: E.rmsDev, normMaxDev: E.normMaxDev, normRmsDev: E.normRmsDev, nonlin: E.nonlin,
       h1solo: E.h1solo, hAt0: E.hAt0, hAtD: E.hAtD,
       Rtot: E.Rtot, P: E.P, V: E.V, wireLen: E.L1 + E.L2,
       N1: E.N1, N2: E.N2,

@@ -30,7 +30,7 @@ const TOP_COLUMNS = [
   "N1_turns", "N2_turns",
   "width1_mm", "width2_mm", "thick1_mm", "thick2_mm",
   "bore1_mm", "bore2_mm", "overlap", "softOk",
-  "maxDev_Oe", "rmsDev_Oe", "nonlin_Oe", "h1solo_Oe", "hAt0_Oe", "hAtD_Oe",
+  "maxDev_Oe", "rmsDev_Oe", "normMaxDev", "normRmsDev", "nonlin_Oe", "h1solo_Oe", "hAt0_Oe", "hAtD_Oe",
   "Rtot_ohm", "P_W", "V_V", "wireLen_m", "J_A_per_mm2",
   "p95MaxDev_Oe", "feasibleFraction",
 ];
@@ -46,7 +46,7 @@ export function writeTopCsv(path, entries) {
       m.N1 ?? turnsOf(p.m1, p.n1, p.last1), m.N2 ?? turnsOf(p.m2, p.n2, p.last2),
       m.width1 ?? "", m.width2 ?? "", m.thick1 ?? "", m.thick2 ?? "",
       m.bore1 ?? "", m.bore2 ?? "", m.overlap ?? "", e.softOk ?? "",
-      m.maxDev, m.rmsDev, m.nonlin, m.h1solo, m.hAt0, m.hAtD,
+      m.maxDev, m.rmsDev, m.normMaxDev, m.normRmsDev, m.nonlin, m.h1solo, m.hAt0, m.hAtD,
       m.Rtot, m.P, m.V, m.wireLen, m.J,
       e.robust ? e.robust.p95MaxDev : "", e.robust ? e.robust.feasibleFraction : "",
     ]));
@@ -87,10 +87,14 @@ export function writeReportMd(path, { dwResults, cliArgs }) {
 
   lines.push("## Wire-gauge comparison");
   lines.push("");
-  lines.push("| dw (mm) | feasible / restarts | best max-dev (Oe) | best p95 max-dev (Oe) | integer-snap Δ max-dev (Oe) |");
-  lines.push("|---|---|---|---|---|");
+  lines.push(`Fixed-current density: ${dwResults.map(r => `dw ${r.dw} mm → ${fmt(r.currentDensity, 3)} A/mm²`).join(", ")}. The 5 A/mm² soft limit remains report-only when all candidates share the same softOk value.`);
+  lines.push("");
+  lines.push(`Local-refinement adoption: ${dwResults.map(r => `dw ${r.dw} mm → ${fmt(100 * r.refinedRate, 1)}%`).join(", ")}.`);
+  lines.push("");
+  lines.push("| dw (mm) | mode | feasible / restarts | DE objective calls | best normalized MSE | best p95 max-dev (Oe) | integer-snap Δ max-dev (Oe) |");
+  lines.push("|---|---|---|---|---|---|---|");
   for (const r of dwResults) {
-    lines.push(`| ${r.dw} | ${r.feasibleCount} / ${r.restarts} | ${fmt(r.bestNominal)} | ${fmt(r.bestRobust)} | ${fmt(r.snapDelta)} |`);
+    lines.push(`| ${r.dw} | ${r.enumerateCoil1 ? `coil-1 enum (${r.coil1ChoiceCount})` : "ordinary DE"} | ${r.feasibleCount} / ${r.restarts} | ${r.deObjectiveCalls} | ${fmt(r.bestNominal, 6)} | ${fmt(r.bestRobust)} | ${fmt(r.snapDelta)} |`);
   }
   lines.push("");
 

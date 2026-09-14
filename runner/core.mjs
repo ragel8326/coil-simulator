@@ -40,7 +40,7 @@ const EXPORTED = [
   "OE", "RHO", "clamp",
   "coilTurns", "turnCount", "H_pack", "H_thin", "wireLength", "resistance",
   "evaluate", "lsq", "findInflection",
-  "OPTVARS", "packFromVec", "capTurns", "snapDim", "objective", "refineLocal",
+  "OPTVARS", "packFromVec", "capTurns", "snapDim", "objective", "objectiveResiduals", "refineLocal",
   "optimizeDEGen", "optimizeDE",
   "solveLin", "invert",
 ];
@@ -56,7 +56,7 @@ export const {
   OE, RHO, clamp,
   coilTurns, turnCount, H_pack, H_thin, wireLength, resistance,
   evaluate, lsq, findInflection,
-  OPTVARS, packFromVec, capTurns, snapDim, objective, refineLocal,
+  OPTVARS, packFromVec, capTurns, snapDim, objective, objectiveResiduals, refineLocal,
   optimizeDEGen, optimizeDE,
   solveLin, invert,
 } = mod;

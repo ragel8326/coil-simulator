@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import * as core from "./core.mjs";
 import { mulberry32 } from "./rng.mjs";
 import { judge } from "./constraints.mjs";
+import { enumerateCoil1 } from "./search.mjs";
 
 // index.html's shipped defaults (README / project brief):
 // I=1, dw=0.5, dist=56.5, R1=43.8, m1=19, n1=11, l1=15, R2=20, m2=15, n2=1,
@@ -13,7 +14,7 @@ function defaultS0() {
   const c1 = { R: 43.8 / 1000, m: 19, n: 11, last: 15, dw, xc: 0, dir: 1 };
   const c2 = { R: 20 / 1000, m: 15, n: 1, last: 15, dw, xc: 56.5 / 1000, dir: -1 };
   const d = 56.5 / 1000;
-  return { I: 1, dw, d, c1, c2, xa: 0, xb: d, h1: 25, h2: 10, jsafe: 5, reqSolo25: true };
+  return { I: 1, dw, d, c1, c2, xa: 0, xb: d, h1: 25, h2: 10, jsafe: 5, reqSolo25: true, dimStep: 0.1, maxTurns: 200 };
 }
 
 // ---- 4.1 Numeric match with the web bench's default design --------------
@@ -38,6 +39,61 @@ test("endpoint requirement penalty gives DE a gradient instead of a 1e6 plateau"
   assert.ok(Number.isFinite(weak) && weak < 1e6);
   assert.ok(Number.isFinite(lessWeak) && lessWeak < 1e6);
   assert.notEqual(weak, lessWeak);
+});
+
+test("normalized deviations are invariant to current while Oe deviation scales", () => {
+  const base = defaultS0();
+  const e1 = core.evaluate({ ...base, I: 1.0 });
+  const e09 = core.evaluate({ ...base, I: 0.9 });
+  const e05 = core.evaluate({ ...base, I: 0.5 });
+  const close = (a, b) => assert.ok(Math.abs(a - b) <= 1e-14 * Math.max(1, Math.abs(a), Math.abs(b)));
+  close(e1.normMaxDev, e09.normMaxDev);
+  close(e1.normMaxDev, e05.normMaxDev);
+  close(e1.normRmsDev, e09.normRmsDev);
+  close(e1.normRmsDev, e05.normRmsDev);
+  close(e09.maxDev / e1.maxDev, 0.9);
+  close(e05.maxDev / e1.maxDev, 0.5);
+});
+
+test("LM residual SSE per sample is identical to the normalized MSE objective", () => {
+  const S0 = defaultS0();
+  const designs = [
+    { R1: 43.8, m1: 19, n1: 11, R2: 20, m2: 15, n2: 1, d: 56.5, I: 1 },
+    { R1: 24, m1: 30, n1: 3, R2: 50.3, m2: 29, n2: 1, d: 57.0, I: 1 },
+    { R1: 35.2, m1: 12, n1: 7, R2: 41.1, m2: 8, n2: 4, d: 72.4, I: 0.7 },
+  ];
+  for (const p of designs) {
+    const e = core.objectiveResiduals(p, S0, 20, -1);
+    const ssePerSample = e.reduce((s, v) => s + v * v, 0) / 61;
+    const obj = core.objective(p, S0, "mse", 20, -1);
+    assert.ok(Math.abs(ssePerSample - obj) <= 1e-12 * Math.max(1, Math.abs(obj)));
+  }
+});
+
+test("LM refines unsnapped dimensions without carrying a flat direction to a bound", () => {
+  const S0 = defaultS0();
+  S0.c1 = { ...S0.c1, R: 0.024, last: 100000 };
+  S0.c2 = { ...S0.c2, last: 100000 };
+  const base = { R1: 24, m1: S0.c1.m, n1: S0.c1.n, R2: 20, m2: S0.c2.m, n2: S0.c2.n, d: 56.5 };
+  const act = core.OPTVARS.filter(v => !["R1", "I"].includes(v.k));
+  const lo = act.map(v => v.min), hi = act.map(v => v.max);
+  const de = core.optimizeDE(S0, act, lo, hi, { mode: "mse", minWin: 20, dirs: [1, -1], gens: 100, rng: mulberry32(3) });
+  const r = core.refineLocal(S0, base, act, de.bestX, de.bestDir, "mse", 20, lo, hi);
+  assert.equal(r.refined, true);
+  const r2i = act.findIndex(v => v.k === "R2");
+  assert.notEqual(r.vec[r2i], act[r2i].min);
+  assert.notEqual(r.vec[r2i], act[r2i].max);
+});
+
+test("coil-1 enumeration returns only Task-1-feasible full-layer windings", () => {
+  for (const dwmm of [0.4, 0.5]) {
+    const S0 = defaultS0();
+    S0.dw = dwmm / 1000;
+    S0.c1 = { ...S0.c1, R: 0.024, dw: S0.dw };
+    const choices = enumerateCoil1(S0);
+    assert.equal(choices.length, 26);
+    assert.ok(choices.every(c => c.m1 * c.n1 <= 200 && Math.abs(c.h1solo - 25) <= 1));
+  }
 });
 
 // ---- 4.2 Reproducibility: same seed -> bit-identical result -------------
