@@ -17,18 +17,27 @@ function defaultS0() {
 }
 
 // ---- 4.1 Numeric match with the web bench's default design --------------
-// These reference values were captured from evaluate() on the ORIGINAL
-// (pre-refactor) index.html core, and cross-checked bit-for-bit (Object.is)
-// against the post-refactor core during the refactor itself. They are also
-// what the Calculate tab shows to the same decimal places for the shipped
-// default design.
+// The deviation reference is the secant through the design's actual endpoint
+// fields, not the fixed nominal 25→10 Oe requirement line.
 test("evaluate() matches the web bench's default-design reference values", () => {
   const S0 = defaultS0();
   const E = core.evaluate(S0);
-  assert.equal(E.maxDev.toFixed(3), "7.871");
-  assert.equal(E.rmsDev.toFixed(3), "4.664");
+  assert.equal(E.maxDev.toFixed(3), "2.602");
+  assert.equal(E.rmsDev.toFixed(3), "1.445");
+  assert.ok(Math.abs(E.wt[0] - E.hAt0) < 1e-12);
+  assert.ok(Math.abs(E.wt.at(-1) - E.hAtD) < 1e-12);
   assert.equal(E.h1solo.toFixed(2), "29.31");
   assert.equal(E.Rtot.toFixed(2), "4.98");
+});
+
+test("endpoint requirement penalty gives DE a gradient instead of a 1e6 plateau", () => {
+  const S0 = defaultS0();
+  const base = { R1: 43.8, n1: 2, R2: 20, m2: 3, n2: 1, d: 56.5 };
+  const weak = core.objective({ ...base, m1: 3 }, S0, "max", 20, -1);
+  const lessWeak = core.objective({ ...base, m1: 8 }, S0, "max", 20, -1);
+  assert.ok(Number.isFinite(weak) && weak < 1e6);
+  assert.ok(Number.isFinite(lessWeak) && lessWeak < 1e6);
+  assert.notEqual(weak, lessWeak);
 });
 
 // ---- 4.2 Reproducibility: same seed -> bit-identical result -------------

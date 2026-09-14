@@ -793,20 +793,22 @@
             </div>
 
             <div class="grp">
-              <div class="grp-h"><b>Measurement Window &amp; Target Line</b></div>
+              <div class="grp-h"><b>Measurement Window &amp; Endpoint Line</b></div>
               <div class="fields">
                 <div class="f full"><label>Measurement window (fixed = 0 → d)</label>
                   <input type="text" id="windisp" value="" readonly>
                 </div>
-                <div class="f"><label for="h1">Target at start (Oe)</label><input type="number" id="h1" value="25"
+                <div class="f"><label for="h1">Nominal start requirement (Oe)</label><input type="number" id="h1" value="25"
                     step="0.5">
                 </div>
-                <div class="f"><label for="h2">Target at end (Oe)</label><input type="number" id="h2" value="10"
+                <div class="f"><label for="h2">Nominal end requirement (Oe)</label><input type="number" id="h2" value="10"
                     step="0.5">
                 </div>
               </div>
               <p class="note" style="margin:9px 0 0">x = 0 is the <b>coil 1 center</b>; x = d is the coil 2 center. The
-                window always spans the full separation between the coils — it is not independently adjustable.</p>
+                window always spans the full separation between the coils — it is not independently adjustable.
+                The plotted comparison line connects the design's actual fields at x=0 and x=d; the nominal values
+                above are retained as endpoint requirements for optimization.</p>
             </div>
 
           </div>
@@ -836,7 +838,7 @@
           </div>
 
           <div class="panel" style="margin-top:14px">
-            <h2>Residual — Model &minus; Target Line</h2>
+            <h2>Residual — Model &minus; Endpoint Line</h2>
             <div class="chartbox">
               <svg class="chart" id="residchart" viewBox="0 0 760 180" role="img"
                 aria-label="Residual within the measurement window"></svg>
@@ -1119,7 +1121,15 @@
       for (let i = 0; i < nWin; i++) {
         const u = i / (nWin - 1), x = xa + span * u;
         wx.push(x); wm.push(total(x)); wthin.push(thin(x));
-        wt.push(S.h1 + (S.h2 - S.h1) * u);
+      }
+      // Compare the curve with the secant through this design's own endpoint
+      // fields.  S.h1/S.h2 remain the nominal Task-3 requirements (25/10 Oe),
+      // but they must not move the displayed straight line away from the
+      // fields a real, tolerance-limited coil actually produces.
+      const hAt0 = wm[0], hAtD = wm[wm.length - 1];
+      for (let i = 0; i < nWin; i++) {
+        const u = i / (nWin - 1);
+        wt.push(hAt0 + (hAtD - hAt0) * u);
       }
       let maxDev = 0, sse = 0, thinDiffPct = 0;
       for (let i = 0; i < nWin; i++) {
@@ -1148,8 +1158,6 @@
       // Task 3: coils driven together in series — combined field at x=0 (coil 1
       // center) and x=d (coil 2 center). Since the window is always [0, d],
       // these are just the first/last samples of the window sweep above.
-      const hAt0 = wm[0], hAtD = wm[wm.length - 1];
-
       // 변곡점 (측정창 안에서 2계 미분 = 0)
       const infl = findInflection(total, xa, xb);
 
@@ -1271,17 +1279,25 @@
       // still negligible. Going higher buys precision nothing else in the project
       // can use. Not written up elsewhere in this repo — this comment is the record.
       const NP = 61; let maxd = 0, sse = 0;
+      const hAtXa = (H_pack(xa, T1, c1.dir, I) + H_pack(xa, T2, c2.dir, I)) / OE;
+      const hAtXb = (H_pack(xb, T1, c1.dir, I) + H_pack(xb, T2, c2.dir, I)) / OE;
       for (let i = 0; i < NP; i++) {
         const u = i / (NP - 1), x = xa + (xb - xa) * u;
         const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
-        const t = S0.h1 + (S0.h2 - S0.h1) * u;
+        const t = hAtXa + (hAtXb - hAtXa) * u;
         const e = h - t; sse += e * e; if (Math.abs(e) > maxd) maxd = Math.abs(e);
       }
-      let v = mode === "max" ? maxd : sse / NP;
-      // Optional Task 1 constraint: coil 1 driven alone must give 25±1.0 Oe at its own center.
+      // A hard 1e6 gate made almost the whole initial population identical,
+      // leaving DE no direction in which to improve.  This continuous penalty
+      // preserves the ±1 Oe feasible band while still guiding distant designs
+      // toward the nominal 25/10 Oe endpoint requirements.
+      const startExcess = Math.max(0, Math.abs(hAtXa - S0.h1) - 1.0);
+      const endExcess = Math.max(0, Math.abs(hAtXb - S0.h2) - 1.0);
       const h1alone = H_pack(0, T1, c1.dir, I) / OE;
-      const solo25Excess = Math.max(0, Math.abs(h1alone - 25) - 1.0);
-      if (S0.reqSolo25 && solo25Excess > 0) return 1e6;
+      const solo25Excess = S0.reqSolo25 ? Math.max(0, Math.abs(h1alone - 25) - 1.0) : 0;
+      const v = mode === "max"
+        ? maxd + 10 * (startExcess + endExcess + solo25Excess)
+        : sse / NP + 100 * (startExcess * startExcess + endExcess * endExcess + solo25Excess * solo25Excess);
       return v;
     }
 
@@ -1297,7 +1313,7 @@
       const cLo = contIdx.map(i => Math.min(lo[i], hi[i]));
       const cHi = contIdx.map(i => Math.max(lo[i], hi[i]));
 
-      const dw = S0.dw, NP = 61, m = contIdx.length;
+      const dw = S0.dw, NP = 61, NR = NP + 3, m = contIdx.length;
       const vecFromPc = pc => {
         const vec = bestX.slice();
         contIdx.forEach((idx, j) => { vec[idx] = pc[j]; });
@@ -1317,13 +1333,23 @@
         const c2 = { R: R2s / 1000, m: r2.m, n: r2.n, last: Math.min(r2.m, S0.c2.last), dw, xc: ds / 1000, dir: bestDir };
         const T1 = coilTurns(c1), T2 = coilTurns(c2);
         const xa = 0, xb = ds / 1000;
-        const e = new Array(NP);
+        const hAtXa = (H_pack(xa, T1, c1.dir, I) + H_pack(xa, T2, c2.dir, I)) / OE;
+        const hAtXb = (H_pack(xb, T1, c1.dir, I) + H_pack(xb, T2, c2.dir, I)) / OE;
+        const h1alone = H_pack(0, T1, c1.dir, I) / OE;
+        const e = new Array(NR);
         for (let i = 0; i < NP; i++) {
           const u = i / (NP - 1), x = xa + (xb - xa) * u;
           const h = (H_pack(x, T1, c1.dir, I) + H_pack(x, T2, c2.dir, I)) / OE;
-          const t = S0.h1 + (S0.h2 - S0.h1) * u;
+          const t = hAtXa + (hAtXb - hAtXa) * u;
           e[i] = h - t;
         }
+        // sqrt(NP*100) makes the squared residuals match objective()'s
+        // endpoint penalty after the shape SSE is normalized by NP.
+        const penaltyScale = Math.sqrt(NP * 100);
+        const signedExcess = (h, target) => Math.sign(h - target) * Math.max(0, Math.abs(h - target) - 1.0);
+        e[NP] = penaltyScale * signedExcess(hAtXa, S0.h1);
+        e[NP + 1] = penaltyScale * signedExcess(hAtXb, S0.h2);
+        e[NP + 2] = S0.reqSolo25 ? penaltyScale * signedExcess(h1alone, 25) : 0;
         return e;
       };
       const sse = pc => { const e = residuals(pc); let s = 0; for (let i = 0; i < e.length; i++) s += e[i] * e[i]; return s; };
@@ -1336,19 +1362,19 @@
       const MAXIT = 60;
 
       const jacobian = pv => {
-        const J = Array.from({ length: NP }, () => new Array(m).fill(0));
+        const J = Array.from({ length: NR }, () => new Array(m).fill(0));
         for (let j = 0; j < m; j++) {
           const h = Math.max(1e-6, Math.abs(pv[j]) * 1e-5);
           const pp = pv.slice(); pp[j] += h; const rp = residuals(pp);
           const pm = pv.slice(); pm[j] -= h; const rm = residuals(pm);
-          for (let i = 0; i < NP; i++) J[i][j] = (rp[i] - rm[i]) / (2 * h);
+          for (let i = 0; i < NR; i++) J[i][j] = (rp[i] - rm[i]) / (2 * h);
         }
         return J;
       };
       const normal = (pv, J) => {
         const r0 = residuals(pv);
         const A = Array.from({ length: m }, () => new Array(m).fill(0)), b = new Array(m).fill(0);
-        for (let i = 0; i < NP; i++) {
+        for (let i = 0; i < NR; i++) {
           const e = -r0[i];
           for (let j = 0; j < m; j++) {
             b[j] += e * J[i][j];
@@ -1551,7 +1577,7 @@
       const NP = 260;
       for (let i = 0; i < NP; i++) { const x = x0 + (x1 - x0) * i / (NP - 1); xs.push(x); ym.push(E.total(x)); }
 
-      let lo = Math.min(0, ...ym), hi = Math.max(...ym, S.h1);
+      let lo = Math.min(0, ...ym, E.hAt0, E.hAtD), hi = Math.max(...ym, E.hAt0, E.hAtD);
       if (measured && $("showmeas").checked) { hi = Math.max(hi, ...measured.mean.map((v, i) => v + measured.sd[i])); }
       if (mcBand && $("showmc").checked) hi = Math.max(hi, ...mcBand.hi);
       const padY = (hi - lo) * 0.08; lo = Math.max(0, lo - padY); hi = hi + padY;
@@ -1619,9 +1645,9 @@
         });
       }
 
-      // 목표 직선
+      // This design's endpoint-to-endpoint comparison line.
       svg.appendChild(el("line", {
-        x1: X(S.xa), y1: Y(S.h1), x2: X(S.xb), y2: Y(S.h2),
+        x1: X(S.xa), y1: Y(E.hAt0), x2: X(S.xb), y2: Y(E.hAtD),
         stroke: cInk2, "stroke-width": 1.6, "stroke-dasharray": "6 4", opacity: .8
       }));
 
@@ -1691,7 +1717,7 @@
         const hv = E.total(xv);
         let txt = `x = ${fmt(xv * 1000, 1)} mm<br>H = <b>${fmt(hv, 2)} Oe</b>`;
         if (xv >= S.xa && xv <= S.xb) {
-          const tv = S.h1 + (S.h2 - S.h1) * (xv - S.xa) / S.span;
+          const tv = E.hAt0 + (E.hAtD - E.hAt0) * (xv - S.xa) / S.span;
           txt += `<br>target ${fmt(tv, 2)} · dev ${fmt(hv - tv, 3)}`;
         }
         tip.innerHTML = txt; tip.style.opacity = 1;
@@ -1701,7 +1727,7 @@
       ov.addEventListener("mouseleave", () => { tip.style.opacity = 0; ch.setAttribute("opacity", 0); });
 
       // 범례
-      const items = [["Result (Model 2)", cModel, "solid"], ["Target line", cInk2, "dash"]];
+      const items = [["Result (Model 2)", cModel, "solid"], ["Actual endpoint line", cInk2, "dash"]];
       if (measured && $("showmeas").checked) items.push(["Measured mean ± STDEV", cMeas, "solid"]);
       if (fitResult) items.push(["Nonlinear least-squares fit", cMeas, "dash"]);
       if (mcBand && $("showmc").checked) items.push(["Tolerance band (5–95%)", cModel, "band"]);
@@ -1747,7 +1773,7 @@
         const cMeas = css("--s-meas");
         measured.x.forEach((xm, i) => {
           const x = xm / 1000; if (x < S.xa || x > S.xb) return;
-          const tv = S.h1 + (S.h2 - S.h1) * (x - S.xa) / S.span;
+          const tv = E.hAt0 + (E.hAtD - E.hAt0) * (x - S.xa) / S.span;
           const r = measured.mean[i] - tv;
           if (Math.abs(r) > m) return;
           svg.appendChild(el("circle", { cx: X(x), cy: Y(r), r: 3.2, fill: cMeas, stroke: css("--surface"), "stroke-width": 1.5 }));
@@ -1759,7 +1785,8 @@
        메트릭 · 판정칩
        ===================================================================== */
     function renderMetrics(S, E) {
-      const pct = v => (v / Math.abs(S.h1 - S.h2) * 100);
+      const actualSpan = Math.max(1e-9, Math.abs(E.hAt0 - E.hAtD));
+      const pct = v => (v / actualSpan * 100);
       // 전류밀도 = 전류 ÷ 도선 단면적. 도선 지름(S.dw)은 미터 단위이므로 mm로 환산.
       const dwmm = S.dw * 1000;
       const wireArea = Math.PI * (dwmm / 2) * (dwmm / 2); // mm²
@@ -1985,9 +2012,11 @@ Click "Apply result" to update the parameters on the left.`;
         const f = x => (H_pack(x, T1, s.c1.dir, s.I) + H_pack(x, T2, s.c2.dir, s.I)) / OE;
         const NP = 61; let maxd = 0;
         const hs = [];
+        const xshift = mod.xshift || 0;
+        const hAtXa = f(s.xa + xshift), hAtXb = f(s.xb + xshift);
         for (let i = 0; i < NP; i++) {
           const u = i / (NP - 1), x = s.xa + (s.xb - s.xa) * u;
-          const h = f(x + (mod.xshift || 0)), t = s.h1 + (s.h2 - s.h1) * u;
+          const h = f(x + xshift), t = hAtXa + (hAtXb - hAtXa) * u;
           hs.push(h); if (Math.abs(h - t) > maxd) maxd = Math.abs(h - t);
         }
         return { hStart: hs[0], hMid: hs[(NP - 1) / 2 | 0], hEnd: hs[NP - 1], maxd };
@@ -2038,6 +2067,8 @@ Click "Apply result" to update the parameters on the left.`;
       const NP = 61;
       const xs = []; for (let i = 0; i < NP; i++) xs.push(S0.xa + S0.span * i / (NP - 1));
       const cols = Array.from({ length: NP }, () => []);
+      const E0 = evaluate(S0);
+      const actualSpan = Math.max(1e-9, Math.abs(E0.hAt0 - E0.hAtD));
 
       let done = 0;
       const step = () => {
@@ -2068,7 +2099,7 @@ Click "Apply result" to update the parameters on the left.`;
         $("showmc").checked = true;
         $("mcnote").innerHTML =
           `${n} trials (radius, distance, current, turn count, and probe position tolerances all applied). The widest 5–95 percentile band is <b>${fmt(widest, 3)} Oe</b> ` +
-          `(${fmt(widest / Math.abs(S0.h1 - S0.h2) * 100, 2)}% of the ${Math.abs(S0.h1 - S0.h2)} Oe target span). ` +
+          `(${fmt(widest / actualSpan * 100, 2)}% of the ${fmt(actualSpan, 2)} Oe actual endpoint span). ` +
           `If the measured mean falls within this band, the deviation is explained by manufacturing tolerance alone.`;
         render();
       };
@@ -2342,8 +2373,8 @@ Coil 1: R ${p(S.c1.R * 1000)} mm, ${S.c1.m} turns × ${S.c1.n} layers (last ${S.
 Coil 2: R ${p(S.c2.R * 1000)} mm, ${S.c2.m} turns × ${S.c2.n} layers (last ${S.c2.last}) = ${E.N2} turns, ${S.c2.dir > 0 ? "forward" : "reverse"}
        winding ${p(S.c2.m * S.c2.dw * 1000)}(width) × ${p(S.c2.n * S.c2.dw * 1000)}(depth) mm, ${fmt(E.L2, 1)} m, ${fmt(E.R2o, 2)} Ω
 Separation d = ${p(S.d * 1000)} mm
-Window ${p(S.xa * 1000)} → ${p(S.xb * 1000)} mm, target ${S.h1} → ${S.h2} Oe
-Max deviation ${fmt(E.maxDev, 3)} Oe (${fmt(E.maxDev / Math.abs(S.h1 - S.h2) * 100, 2)}%), nonlinearity ${fmt(E.nonlin, 3)} Oe
+Window ${p(S.xa * 1000)} → ${p(S.xb * 1000)} mm, endpoint line ${fmt(E.hAt0, 2)} → ${fmt(E.hAtD, 2)} Oe (nominal requirements ${S.h1} → ${S.h2} Oe)
+Max deviation ${fmt(E.maxDev, 3)} Oe (${fmt(E.maxDev / Math.max(1e-9, Math.abs(E.hAt0 - E.hAtD)) * 100, 2)}%), nonlinearity ${fmt(E.nonlin, 3)} Oe
 Slope ${fmt(E.fit.a / 100, 2)} Oe/cm
 Total resistance ${fmt(E.Rtot, 2)} Ω · voltage ${fmt(E.V, 2)} V · power ${fmt(E.P, 2)} W · copper wire ${fmt(E.L1 + E.L2, 1)} m
 Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
