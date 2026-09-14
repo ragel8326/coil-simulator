@@ -80,22 +80,6 @@ OUT="runs/${NAME}"
 echo "     → ${G}${OUT}/${N}"
 echo ""
 
-# ---- 6. 고정할 변수 (선택) -------------------------------------------------
-echo "  ${B}6. 이미 확정된 값이 있으면 고정하세요. (선택 — 비워두면 전부 탐색)${N}"
-echo "     ${D}예: R1=24  → 코일1 반경을 24mm(직경 48mm)로 고정하고 나머지만 찾습니다.${N}"
-echo "     ${D}여러 개는 쉼표로: R1=24,I=0.48${N}"
-echo "     ${D}사용 가능한 변수: R1,m1,n1(코일1 반경mm·층당턴수·층수), R2,m2,n2(코일2), d(간격mm), I(전류A)${N}"
-read -p "     고정할 변수 [기본: 없음]: " FIX_IN
-if [ -n "$FIX_IN" ]; then
-  echo "     → ${G}${FIX_IN}${N}"
-else
-  echo "     → ${G}(없음 — 8개 변수 모두 탐색)${N}"
-fi
-echo ""
-
-FIX_ARGS=()
-if [ -n "$FIX_IN" ]; then FIX_ARGS=(--fix "$FIX_IN"); fi
-
 # ---- 확인 -----------------------------------------------------------------
 NGAUGE=$(echo $DWS | wc -w | tr -d ' ')
 NTURN=$(echo $TURNS | wc -w | tr -d ' ')
@@ -107,7 +91,6 @@ EST=$(( (RESTARTS * SEC / 10 / CORES + 15) * NGAUGE * NTURN ))
 echo "  ${D}------------------------------------------------------------${N}"
 echo "  실행 횟수: ${B}$(( NGAUGE * NTURN ))회${N}  (굵기 ${NGAUGE} × 턴수상한 ${NTURN})"
 echo "  예상 소요 시간: 약 ${B}$(( EST / 60 ))분 $(( EST % 60 ))초${N}   ${D}(코어 ${CORES}개 사용)${N}"
-if [ -n "$FIX_IN" ]; then echo "  고정 변수: ${B}${FIX_IN}${N}"; fi
 echo "  ${D}도중에 멈추려면 Control + C 를 누르세요.${N}"
 echo ""
 read -p "  시작할까요? [Enter=시작, n=취소]: " go
@@ -124,7 +107,6 @@ for T in $TURNS; do
     echo "  ${B}[턴수 ${T} · ${DW} mm]${N} 계산 중..."
     node runner/run.mjs --dw "$DW" --restarts "$RESTARTS" --gens "$GENS" --mc 500 \
          --sweep "$SWEEP" --workers "$CORES" --max-turns "$T" \
-         "${FIX_ARGS[@]}" \
          --out "${OUT}/${TTAG}/${TAG}" || { echo "  ${R}실행 중 문제가 생겼습니다.${N}"; pause_exit 1; }
     DIRS="$DIRS ${OUT}/${TTAG}/${TAG}"
   done
