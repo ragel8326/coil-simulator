@@ -40,29 +40,40 @@ esac
 echo "     → ${G}${DWS} mm${N}"
 echo ""
 
-# ---- 2. 최적화 횟수 -------------------------------------------------------
-echo "  ${B}2. 최적화를 몇 번 반복할까요?${N}"
+# ---- 2. 턴수 상한 ---------------------------------------------------------
+echo "  ${B}2. 코일 하나당 감을 수 있는 최대 턴수는?${N}"
+echo "     ${D}손으로 감는 현실적 한계입니다. 쉼표로 여러 개를 넣으면 각각 돌려서 비교표를 만듭니다.${N}"
+echo "     ${D}0 을 넣으면 제한 없이 돌립니다(턴수가 천 단위로 올라가고 훨씬 오래 걸립니다).${N}"
+read -p "     턴수 [기본 200,300,400]: " TURNS_IN
+TURNS_IN="${TURNS_IN:-200,300,400}"
+TURNS=$(echo "$TURNS_IN" | tr ',' ' ')
+for t in $TURNS; do
+  case "$t" in ''|*[!0-9]*) echo "     ${R}'$t' 는 숫자가 아닙니다. 200,300,400 으로 진행합니다.${N}"; TURNS="200 300 400"; break ;; esac
+done
+echo "     → ${G}${TURNS}턴${N}"
+echo ""
+
+# ---- 3. 최적화 횟수 -------------------------------------------------------
+echo "  ${B}3. 최적화를 몇 번 반복할까요?${N}"
 echo "     ${D}한 번에 하나씩 처음부터 다시 찾습니다. 많을수록 더 좋은 설계가 나올 확률이 올라갑니다.${N}"
-echo "     ${D}굵기 하나당 120번이면 약 1분 20초 걸립니다.${N}"
-read -p "     횟수 [기본 120]: " RESTARTS
-RESTARTS="${RESTARTS:-120}"
-case "$RESTARTS" in ''|*[!0-9]*) echo "     ${R}숫자가 아닙니다. 120으로 진행합니다.${N}"; RESTARTS=120 ;; esac
+read -p "     횟수 [기본 1000]: " RESTARTS
+RESTARTS="${RESTARTS:-1000}"
+case "$RESTARTS" in ''|*[!0-9]*) echo "     ${R}숫자가 아닙니다. 1000으로 진행합니다.${N}"; RESTARTS=1000 ;; esac
 echo "     → ${G}${RESTARTS}번${N}"
 echo ""
 
-# ---- 3. 전수탐색 개수 -----------------------------------------------------
-echo "  ${B}3. 무작위로 계산해볼 설계를 몇 개 뽑을까요?${N}"
-echo "     ${D}최적화와 별개로, 설계 공간을 넓게 훑어보는 표입니다. 엑셀의 '전수탐색' 시트가 됩니다.${N}"
-echo "     ${D}3만 개는 몇 초면 끝납니다. 0을 넣으면 건너뜁니다.${N}"
+# ---- 4. 전수탐색 개수 -----------------------------------------------------
+echo "  ${B}4. 무작위로 계산해볼 설계를 몇 개 뽑을까요?${N}"
+echo "     ${D}엑셀의 '전수탐색' 시트가 됩니다. 3만 개는 몇 초면 끝납니다. 0을 넣으면 건너뜁니다.${N}"
 read -p "     개수 [기본 30000]: " SWEEP
 SWEEP="${SWEEP:-30000}"
 case "$SWEEP" in ''|*[!0-9]*) echo "     ${R}숫자가 아닙니다. 30000으로 진행합니다.${N}"; SWEEP=30000 ;; esac
 echo "     → ${G}${SWEEP}개${N}"
 echo ""
 
-# ---- 4. 결과 폴더 이름 ----------------------------------------------------
+# ---- 5. 결과 폴더 이름 ----------------------------------------------------
 DEF="$(date +%Y-%m-%d_%H%M)"
-echo "  ${B}4. 결과를 어떤 이름으로 저장할까요?${N}"
+echo "  ${B}5. 결과를 어떤 이름으로 저장할까요?${N}"
 read -p "     이름 [기본 ${DEF}]: " NAME
 NAME="${NAME:-$DEF}"
 OUT="runs/${NAME}"
@@ -71,28 +82,34 @@ echo ""
 
 # ---- 확인 -----------------------------------------------------------------
 NGAUGE=$(echo $DWS | wc -w | tr -d ' ')
-CORES_EST=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
-EST=$(( (RESTARTS * 56 / 10 / CORES_EST + 15) * NGAUGE ))
+NTURN=$(echo $TURNS | wc -w | tr -d ' ')
+CORES=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+GENS=300
+# 턴수 상한이 있으면 코일이 작아 계산이 가볍다. 무제한이면 훨씬 무겁다.
+SEC=15; for t in $TURNS; do [ "$t" = "0" ] && SEC=56; done
+EST=$(( (RESTARTS * SEC / 10 / CORES + 15) * NGAUGE * NTURN ))
 echo "  ${D}------------------------------------------------------------${N}"
-echo "  예상 소요 시간: 약 ${B}$(( EST / 60 ))분 $(( EST % 60 ))초${N}"
+echo "  실행 횟수: ${B}$(( NGAUGE * NTURN ))회${N}  (굵기 ${NGAUGE} × 턴수상한 ${NTURN})"
+echo "  예상 소요 시간: 약 ${B}$(( EST / 60 ))분 $(( EST % 60 ))초${N}   ${D}(코어 ${CORES}개 사용)${N}"
 echo "  ${D}도중에 멈추려면 Control + C 를 누르세요.${N}"
 echo ""
 read -p "  시작할까요? [Enter=시작, n=취소]: " go
 case "$go" in [nN]*) echo "  취소했습니다."; pause_exit 0 ;; esac
 echo ""
 
-GENS=300
-CORES=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
-
 # ---- 실행 -----------------------------------------------------------------
 START=$(date +%s)
 DIRS=""
-for DW in $DWS; do
-  TAG="dw$(echo "$DW" | tr -d '.')"
-  echo "  ${B}[${DW} mm]${N} 계산 중..."
-  node runner/run.mjs --dw "$DW" --restarts "$RESTARTS" --gens "$GENS" --mc 500 \
-       --sweep "$SWEEP" --workers "$CORES" --out "${OUT}/${TAG}" || { echo "  ${R}실행 중 문제가 생겼습니다.${N}"; pause_exit 1; }
-  DIRS="$DIRS ${OUT}/${TAG}"
+for T in $TURNS; do
+  if [ "$T" = "0" ]; then TTAG="turns무제한"; else TTAG="turns${T}"; fi
+  for DW in $DWS; do
+    TAG="dw$(echo "$DW" | tr -d '.')"
+    echo "  ${B}[턴수 ${T} · ${DW} mm]${N} 계산 중..."
+    node runner/run.mjs --dw "$DW" --restarts "$RESTARTS" --gens "$GENS" --mc 500 \
+         --sweep "$SWEEP" --workers "$CORES" --max-turns "$T" \
+         --out "${OUT}/${TTAG}/${TAG}" || { echo "  ${R}실행 중 문제가 생겼습니다.${N}"; pause_exit 1; }
+    DIRS="$DIRS ${OUT}/${TTAG}/${TAG}"
+  done
 done
 
 echo ""
@@ -105,7 +122,7 @@ echo ""
 echo "  ${G}끝났습니다.${N} (${B}$(( ELAPSED / 60 ))분 $(( ELAPSED % 60 ))초${N} 걸렸습니다)"
 echo ""
 echo "  엑셀 파일: ${B}${XLSX}${N}"
-echo "  ${D}요약 보고서는 각 굵기 폴더의 report.md 에 있습니다.${N}"
+echo "  ${D}굵기비교 시트에서 턴수 상한별 성적을 나란히 보실 수 있습니다.${N}"
 echo ""
 open "$OUT" 2>/dev/null
 pause_exit 0

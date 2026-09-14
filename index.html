@@ -1219,6 +1219,28 @@
       { k: "I", label: "Current (A)", min: 0.1, max: 1.0, int: false },
     ];
 
+    /* 설계 치수(반경·간격)를 격자에 맞춘다.
+       3D 프린팅과 측정 모두 0.1mm 보다 잘게는 의미가 없으므로, 탐색 단계에서부터
+       0.1 단위로만 값을 잡는다. 소수점 아래로 끝없이 내려간 치수가 나와도 어차피
+       그대로 만들 수 없기 때문이다. dimStep 이 0 이거나 없으면 격자를 쓰지 않는다. */
+    function snapDim(v, step) {
+      if (!step || step <= 0) return v;
+      return Math.round(Math.round(v / step) * step * 1e6) / 1e6;
+    }
+
+    /* 코일 하나당 총 턴수 상한.
+       손으로 감는 현실적 한계를 반영한다. 상한을 넘는 설계를 '탈락'시키는 대신
+       층당 턴수와 층수를 상한에 맞게 줄여서 매핑한다. 탈락시키면 탐색 공간의
+       대부분이 벽이 되어 차분진화가 제대로 굴러가지 못하는데, 줄여서 매핑하면
+       탐색이 매끄럽게 이어지고 결과는 언제나 상한을 만족한다.
+       maxTurns 가 0 이거나 없으면 아무것도 하지 않는다(무제한). */
+    function capTurns(m, n, maxTurns) {
+      if (!maxTurns || maxTurns <= 0) return { m, n };
+      const mm = Math.max(1, Math.min(m, maxTurns));
+      const nn = Math.max(1, Math.min(n, Math.floor(maxTurns / mm)));
+      return { m: mm, n: nn };
+    }
+
     function packFromVec(base, vec, act) {
       const o = { ...base };
       act.forEach((v, i) => { o[v.k] = v.int ? Math.round(vec[i]) : vec[i]; });
@@ -1231,10 +1253,14 @@
       // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
       // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
       const I = p.I ?? S0.I;
-      const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
-      const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: dir2 };
+      const g = S0.dimStep;
+      const R1s = snapDim(p.R1, g), R2s = snapDim(p.R2, g), ds = snapDim(p.d, g);
+      const t1 = capTurns(Math.max(1, p.m1), Math.max(1, p.n1), S0.maxTurns);
+      const t2 = capTurns(Math.max(1, p.m2), Math.max(1, p.n2), S0.maxTurns);
+      const c1 = { R: R1s / 1000, m: t1.m, n: t1.n, last: Math.min(t1.m, S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+      const c2 = { R: R2s / 1000, m: t2.m, n: t2.n, last: Math.min(t2.m, S0.c2.last), dw, xc: ds / 1000, dir: dir2 };
       // Window is always [0, d] — the segment between the two coil centers — not a free variable.
-      const xa = 0, xb = p.d / 1000;
+      const xa = 0, xb = ds / 1000;
       if (!(xb - xa >= minWin / 1000)) return 1e6;
       const T1 = coilTurns(c1), T2 = coilTurns(c2);
       // NP=61 — chosen from a convergence check across 200 random designs in the
@@ -1283,10 +1309,14 @@
         // last는 탐색 대상이 아니므로 사용자가 설정한 값(S0.c1.last/S0.c2.last)을 그대로 쓴다.
         // m이 그보다 작아지는 경우만 클램프한다 — 이전에는 항상 last=m으로 강제해서
         // last1/last2가 최적화 중 몰래 바뀌는 문제가 있었다.
-        const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: Math.min(Math.max(1, p.m1), S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
-        const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: Math.min(Math.max(1, p.m2), S0.c2.last), dw, xc: p.d / 1000, dir: bestDir };
+        const g = S0.dimStep;
+        const R1s = snapDim(p.R1, g), R2s = snapDim(p.R2, g), ds = snapDim(p.d, g);
+        const r1 = capTurns(Math.max(1, p.m1), Math.max(1, p.n1), S0.maxTurns);
+        const r2 = capTurns(Math.max(1, p.m2), Math.max(1, p.n2), S0.maxTurns);
+        const c1 = { R: R1s / 1000, m: r1.m, n: r1.n, last: Math.min(r1.m, S0.c1.last), dw, xc: 0, dir: S0.c1.dir };
+        const c2 = { R: R2s / 1000, m: r2.m, n: r2.n, last: Math.min(r2.m, S0.c2.last), dw, xc: ds / 1000, dir: bestDir };
         const T1 = coilTurns(c1), T2 = coilTurns(c2);
-        const xa = 0, xb = p.d / 1000;
+        const xa = 0, xb = ds / 1000;
         const e = new Array(NP);
         for (let i = 0; i < NP; i++) {
           const u = i / (NP - 1), x = xa + (xb - xa) * u;

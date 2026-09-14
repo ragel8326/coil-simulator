@@ -2,7 +2,7 @@
 // runner pipeline. All physics/optimizer calls go through core.mjs — this
 // file only adds search strategy (seeds, neighborhoods), never new math.
 import {
-  OPTVARS, packFromVec, objective, evaluate, coilTurns, H_pack, OE,
+  OPTVARS, packFromVec, capTurns, snapDim, objective, evaluate, coilTurns, H_pack, OE,
   optimizeDE, refineLocal,
 } from "./core.mjs";
 import { judge } from "./constraints.mjs";
@@ -16,6 +16,17 @@ import { fileURLToPath } from "node:url";
 // not depend on R/m/n/d at all, so at dw=0.3/0.4mm the safe-current-density
 // constraint is only satisfiable at all by lowering I below the 1A cap.
 export const STRUCT_VARS = OPTVARS;
+
+// Removes any variable the caller has pinned to a fixed value (see run.mjs
+// --fix) from a search-variable list. The fixed value itself doesn't live
+// here — it lives on S0 (see run.mjs's FIX_SETTERS/applyFix), and
+// packFromVec()'s `{...base}` spread already reproduces any key missing
+// from `act` unchanged, so simply excluding the key from the search list is
+// enough to stop the optimizer from ever moving it.
+export function searchVars(vars, fix) {
+  if (!fix || !Object.keys(fix).length) return vars;
+  return vars.filter(v => !(v.k in fix));
+}
 
 // Stage B (integer-grid neighbor search) only covers the 7 variables the
 // implementation spec names for it (R1, m1, n1, R2, m2, n2, d) — current I
@@ -35,15 +46,34 @@ function baseFromS0(S0) {
 // a base S0 (for dw, I, h1, h2, jsafe, reqSolo25) and a coil-2 direction.
 export function stateFromDesign(S0, p, dir2) {
   const dw = S0.dw;
-  const last1 = Math.min(Math.max(1, p.m1), S0.c1.last);
-  const last2 = Math.min(Math.max(1, p.m2), S0.c2.last);
-  const c1 = { R: p.R1 / 1000, m: Math.max(1, p.m1), n: Math.max(1, p.n1), last: last1, dw, xc: 0, dir: S0.c1.dir };
-  const c2 = { R: p.R2 / 1000, m: Math.max(1, p.m2), n: Math.max(1, p.n2), last: last2, dw, xc: p.d / 1000, dir: dir2 };
+  // objective() 와 똑같이 턴수 상한과 치수 격자를 적용해야 탐색 결과와 최종 지표가 어긋나지 않는다.
+  const g = S0.dimStep;
+  const R1s = snapDim(p.R1, g), R2s = snapDim(p.R2, g), ds = snapDim(p.d, g);
+  const t1 = capTurns(Math.max(1, p.m1), Math.max(1, p.n1), S0.maxTurns);
+  const t2 = capTurns(Math.max(1, p.m2), Math.max(1, p.n2), S0.maxTurns);
+  const last1 = Math.min(t1.m, S0.c1.last);
+  const last2 = Math.min(t2.m, S0.c2.last);
+  const c1 = { R: R1s / 1000, m: t1.m, n: t1.n, last: last1, dw, xc: 0, dir: S0.c1.dir };
+  const c2 = { R: R2s / 1000, m: t2.m, n: t2.n, last: last2, dw, xc: ds / 1000, dir: dir2 };
   const I = p.I ?? S0.I;
-  const d = p.d / 1000;
+  const d = ds / 1000;
   return {
     I, dw, d, c1, c2, xa: 0, xb: d,
     h1: S0.h1, h2: S0.h2, jsafe: S0.jsafe, reqSolo25: S0.reqSolo25,
+  };
+}
+
+// 실제로 만들어진 설계값을 돌려준다.
+// 탐색이 내놓은 원값(p)은 치수 격자와 턴수 상한을 거치기 전 값이라, 그대로 기록하면
+// "파일에는 41.839mm, 38층이라고 적혀 있는데 계산은 41.8mm, 14층으로 했다"가 된다.
+// 평가에 쓰인 상태 S 에서 되읽어 기록해야 어긋나지 않는다.
+function builtParams(S, p, dir2) {
+  const r = v => Math.round(v * 1e6) / 1e6;
+  return {
+    ...p,
+    R1: r(S.c1.R * 1000), m1: S.c1.m, n1: S.c1.n, last1: S.c1.last,
+    R2: r(S.c2.R * 1000), m2: S.c2.m, n2: S.c2.n, last2: S.c2.last,
+    d: r(S.d * 1000), I: S.I, dir2,
   };
 }
 
@@ -76,10 +106,10 @@ export function runSeed(S0, act, lo, hi, seed, { gens, mode, minWin, dirs }) {
   if (!p) {
     return { seed, feasible: false, obj: Infinity, refined: false, params: null, metrics: null, ms };
   }
-  const { S, E, feasible, violations, currentDensityValue } = evalDesign(S0, p, bestDir);
+  const { S, E, feasible, softOk, violations, currentDensityValue } = evalDesign(S0, p, bestDir);
   return {
-    seed, feasible, obj: objAfterRefine, refined, violations,
-    params: { ...p, dir2: bestDir, last1: S.c1.last, last2: S.c2.last },
+    seed, feasible, softOk, obj: objAfterRefine, refined, violations,
+    params: builtParams(S, p, bestDir),
     metrics: {
       maxDev: E.maxDev, rmsDev: E.rmsDev, nonlin: E.nonlin,
       h1solo: E.h1solo, hAt0: E.hAt0, hAtD: E.hAtD,
@@ -89,6 +119,11 @@ export function runSeed(S0, act, lo, hi, seed, { gens, mode, minWin, dirs }) {
       // 축 방향 폭 = 층당 턴수 x 도선 지름, 반경 방향 두께 = 층수 x 도선 지름.
       width1: S.c1.m * S.dw * 1000, width2: S.c2.m * S.dw * 1000,
       thick1: S.c1.n * S.dw * 1000, thick2: S.c2.n * S.dw * 1000,
+      // 프로브가 지나갈 안지름과, 두 코일이 축 방향으로 겹치는지 여부.
+      // 겹침은 제약이 아니라 표시다 — 반경이 다르면 코일2가 코일1 안쪽에 들어갈 수 있다.
+      bore1: 2 * (S.c1.R * 1000 - S.c1.n * S.dw * 1000 / 2),
+      bore2: 2 * (S.c2.R * 1000 - S.c2.n * S.dw * 1000 / 2),
+      overlap: (S.c1.m * S.dw * 1000) / 2 + (S.c2.m * S.dw * 1000) / 2 > S.d * 1000,
       J: currentDensityValue,
     },
     ms,
@@ -257,10 +292,10 @@ export function neighborSearch(S0, act, seedParams, mode, minWin,
     return { improved: false, params: seedParams, obj: null, evaluated, passes };
   }
 
-  const { S, E, feasible, violations, currentDensityValue } = evalDesign(S0, cur, dir2);
+  const { S, E, feasible, softOk, violations, currentDensityValue } = evalDesign(S0, cur, dir2);
   return {
-    improved: true, evaluated, passes,
-    params: { ...cur, dir2, last1: S.c1.last, last2: S.c2.last },
+    improved: true, evaluated, passes, softOk,
+    params: builtParams(S, cur, dir2),
     obj: curObj, feasible, violations,
     metrics: {
       maxDev: E.maxDev, rmsDev: E.rmsDev, nonlin: E.nonlin,
@@ -271,6 +306,11 @@ export function neighborSearch(S0, act, seedParams, mode, minWin,
       // 축 방향 폭 = 층당 턴수 x 도선 지름, 반경 방향 두께 = 층수 x 도선 지름.
       width1: S.c1.m * S.dw * 1000, width2: S.c2.m * S.dw * 1000,
       thick1: S.c1.n * S.dw * 1000, thick2: S.c2.n * S.dw * 1000,
+      // 프로브가 지나갈 안지름과, 두 코일이 축 방향으로 겹치는지 여부.
+      // 겹침은 제약이 아니라 표시다 — 반경이 다르면 코일2가 코일1 안쪽에 들어갈 수 있다.
+      bore1: 2 * (S.c1.R * 1000 - S.c1.n * S.dw * 1000 / 2),
+      bore2: 2 * (S.c2.R * 1000 - S.c2.n * S.dw * 1000 / 2),
+      overlap: (S.c1.m * S.dw * 1000) / 2 + (S.c2.m * S.dw * 1000) / 2 > S.d * 1000,
       J: currentDensityValue,
     },
   };

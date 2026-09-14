@@ -9,6 +9,7 @@ import { parallelMultiStart, neighborSearch, STRUCT_VARS, NEIGHBOR_VARS } from "
 import { reRankByRobustness } from "./robust.mjs";
 import { randomSweep } from "./sweep.mjs";
 import { gapSweep } from "./gapsweep.mjs";
+import { rankCompare, FIELD_RESOLUTION_OE } from "./ranking.mjs";
 import { writeRawJsonl, writeTopCsv, writeConvergenceCsv, writeReportMd, writeGapSweepCsv } from "./report.mjs";
 
 function parseArgs(argv) {
@@ -22,6 +23,8 @@ function parseArgs(argv) {
     out: `runs/${new Date().toISOString().slice(0, 10)}`,
     minWin: 20,
     top: 20,
+    dimStep: 0.1,      // 설계 치수 격자 (mm). 0 이면 격자 없음
+    maxTurns: 0,       // 코일 하나당 총 턴수 상한 (0 = 무제한)
     candidates: 50,   // 공차 검사까지 넘길 상위 설계 수 (예전에는 10개로 고정돼 있었다)
     sweep: 30000,
   };
@@ -40,6 +43,8 @@ function parseArgs(argv) {
       case "--top": args.top = +next(); break;
       case "--sweep": args.sweep = +next(); break;
       case "--candidates": args.candidates = +next(); break;
+      case "--max-turns": args.maxTurns = +next(); break;
+      case "--dim-step": args.dimStep = +next(); break;
       default:
         console.error(`Unknown argument: ${a}`);
         process.exit(1);
@@ -61,11 +66,13 @@ function defaultS0(dw_mm) {
   const c1 = { R: 43.8 / 1000, m: 19, n: 11, last: FULL, dw, xc: 0, dir: 1 };
   const c2 = { R: 20 / 1000, m: 15, n: 1, last: FULL, dw, xc: 56.5 / 1000, dir: -1 };
   const d = 56.5 / 1000;
-  return { I: 1, dw, d, c1, c2, xa: 0, xb: d, h1: 25, h2: 10, jsafe: 5, reqSolo25: true };
+  return { I: 1, dw, d, c1, c2, xa: 0, xb: d, h1: 25, h2: 10, jsafe: 5, reqSolo25: true, maxTurns: 0, dimStep: 0.1 };
 }
 
 async function runForWireGauge(dw, args, rawSink) {
   const S0 = defaultS0(dw);
+  S0.maxTurns = args.maxTurns || 0;
+  S0.dimStep = args.dimStep ?? 0.1;
   const act = STRUCT_VARS;
   const lo = act.map(v => v.min), hi = act.map(v => v.max);
   const dirs = [1, -1];
@@ -85,7 +92,7 @@ async function runForWireGauge(dw, args, rawSink) {
   });
 
   const feasible = runs.filter(r => r.feasible);
-  feasible.sort((a, b) => a.obj - b.obj);
+  feasible.sort(rankCompare(r => r.obj));
   const topN = feasible.slice(0, Math.max(1, args.candidates));
 
   if (args.sweep > 0) {
@@ -101,17 +108,18 @@ async function runForWireGauge(dw, args, rawSink) {
   for (const cand of topN) {
     const cont = neighborSearch(S0, NEIGHBOR_VARS, cand.params, args.objective, args.minWin, { contStep: 0.1 });
     rawSink.push({ stage: "B-continuous", dw_mm: dw, seed: cand.seed, ...cont });
-    stageB.push({ dw_mm: dw, stage: "B", seed: cand.seed, obj: cont.obj ?? cand.obj, feasible: cont.feasible ?? cand.feasible, params: cont.params ?? cand.params, metrics: cont.metrics ?? cand.metrics });
+    stageB.push({ dw_mm: dw, stage: "B", seed: cand.seed, obj: cont.obj ?? cand.obj, feasible: cont.feasible ?? cand.feasible, softOk: cont.softOk ?? cand.softOk, params: cont.params ?? cand.params, metrics: cont.metrics ?? cand.metrics });
 
     const snapped = neighborSearch(S0, NEIGHBOR_VARS, cand.params, args.objective, args.minWin, { contStep: 1, contRange: 2, snap: true });
     rawSink.push({ stage: "B-integer-snap", dw_mm: dw, seed: cand.seed, ...snapped });
     if (snapped.improved && snapped.feasible) {
       stageBint.push({ dw_mm: dw, stage: "B-int", seed: cand.seed, obj: snapped.obj,
-        feasible: snapped.feasible, params: snapped.params, metrics: snapped.metrics });
+        feasible: snapped.feasible, softOk: snapped.softOk, params: snapped.params, metrics: snapped.metrics });
     }
   }
-  stageB.sort((a, b) => a.obj - b.obj);
-  stageBint.sort((a, b) => a.obj - b.obj);
+  const byRank = rankCompare(r => r.obj);
+  stageB.sort(byRank);
+  stageBint.sort(byRank);
 
   process.stderr.write(`[dw=${dw}mm] Stage C: tolerance Monte Carlo (K=${args.mc}) re-ranking...\n`);
   const stageC = reRankByRobustness(S0, stageB, args.mc);
@@ -142,7 +150,8 @@ async function runForWireGauge(dw, args, rawSink) {
   }
 
   return {
-    dw, restarts: args.restarts, feasibleCount: feasible.length,
+    dw, maxTurns: args.maxTurns || 0, dimStep: S0.dimStep, restarts: args.restarts, feasibleCount: feasible.length,
+    softOkCount: feasible.filter(r => r.softOk !== false).length,
     bestNominal: feasible.length ? feasible[0].obj : null,
     bestRobust: stageC.length ? stageC[0].robust.p95MaxDev : null,
     top: stageC.slice(0, args.top),
@@ -175,7 +184,8 @@ async function main() {
   if (rawSink.sweep.length) writeRawJsonl(`${args.out}/sweep.jsonl`, rawSink.sweep);
   writeFileSync(`${args.out}/summary.json`, JSON.stringify(
     dwResults.map(r => ({
-      dw: r.dw, restarts: r.restarts, feasibleCount: r.feasibleCount,
+      dw: r.dw, maxTurns: r.maxTurns, dimStep: r.dimStep, restarts: r.restarts, feasibleCount: r.feasibleCount,
+      softOkCount: r.softOkCount,
       bestNominal: r.bestNominal, bestRobust: r.bestRobust, snapDelta: r.snapDelta,
       bestIntegerNominal: r.bestIntegerNominal, bestIntegerRobust: r.bestIntegerRobust,
     })), null, 2));

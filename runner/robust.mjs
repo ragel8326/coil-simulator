@@ -9,6 +9,7 @@ import { evaluate } from "./core.mjs";
 import { judge } from "./constraints.mjs";
 import { stateFromDesign } from "./search.mjs";
 import { mulberry32 } from "./rng.mjs";
+import { rankCompare } from "./ranking.mjs";
 
 const assumptionsPath = new URL("./assumptions.json", import.meta.url);
 export const ASSUMPTIONS = JSON.parse(readFileSync(assumptionsPath, "utf8"));
@@ -65,6 +66,6 @@ export function robustRank(S0, candidate, K = 500, seed = 12345) {
 // more robust first), keeping the nominal ranking available for comparison.
 export function reRankByRobustness(S0, candidates, K = 500, seed = 12345) {
   const ranked = candidates.map(c => robustRank(S0, c, K, seed));
-  ranked.sort((a, b) => a.robust.p95MaxDev - b.robust.p95MaxDev);
+  ranked.sort(rankCompare(r => r.robust.p95MaxDev));
   return ranked;
 }

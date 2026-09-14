@@ -21,11 +21,16 @@ export function randomSweep(S0, n, { seed = 20260913, dirs = [1, -1] } = {}) {
       p[v.k] = v.int ? Math.round(x) : +x.toFixed(4);
     }
     const dir2 = dirs[Math.min(dirs.length - 1, Math.floor(rng() * dirs.length))];
-    const { S, E, feasible, violations, currentDensityValue } = evalDesign(S0, p, dir2);
+    const { S, E, feasible, softOk, violations, currentDensityValue } = evalDesign(S0, p, dir2);
     rows.push({
       stage: "S-sweep", dw_mm: +(S0.dw * 1000).toFixed(3), sample: i,
-      params: { ...p, dir2, last1: S.c1.last, last2: S.c2.last },
-      feasible, violations,
+      params: {
+        ...p, dir2,
+        R1: Math.round(S.c1.R * 1e9) / 1e6, m1: S.c1.m, n1: S.c1.n, last1: S.c1.last,
+        R2: Math.round(S.c2.R * 1e9) / 1e6, m2: S.c2.m, n2: S.c2.n, last2: S.c2.last,
+        d: Math.round(S.d * 1e9) / 1e6, I: S.I,
+      },
+      feasible, softOk, violations,
       metrics: {
         maxDev: E.maxDev, rmsDev: E.rmsDev, nonlin: E.nonlin,
         h1solo: E.h1solo, hAt0: E.hAt0, hAtD: E.hAtD,
@@ -33,6 +38,9 @@ export function randomSweep(S0, n, { seed = 20260913, dirs = [1, -1] } = {}) {
         N1: E.N1, N2: E.N2, J: currentDensityValue,
         width1: S.c1.m * S.dw * 1000, width2: S.c2.m * S.dw * 1000,
         thick1: S.c1.n * S.dw * 1000, thick2: S.c2.n * S.dw * 1000,
+        bore1: 2 * (S.c1.R * 1000 - S.c1.n * S.dw * 1000 / 2),
+        bore2: 2 * (S.c2.R * 1000 - S.c2.n * S.dw * 1000 / 2),
+        overlap: (S.c1.m * S.dw * 1000) / 2 + (S.c2.m * S.dw * 1000) / 2 > S.d * 1000,
       },
     });
   }

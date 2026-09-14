@@ -4,7 +4,6 @@
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
-# 이 스크립트는 runner\ 안에 있으므로, 한 단계 위(coil-bench)로 이동한다.
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 function Pause-Exit($code = 0) {
@@ -21,14 +20,12 @@ Write-Host "  코일 벤치 대량 최적화" -ForegroundColor White
 Write-Host "  $(Get-Location)" -ForegroundColor DarkGray
 Write-Host ""
 
-# ---- 필요한 프로그램 확인 --------------------------------------------------
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Write-Host "  Node.js가 설치되어 있지 않습니다." -ForegroundColor Red
   Write-Host "  https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행해주세요."
   Pause-Exit 1
 }
 
-# 윈도우는 python / py -3 / python3 중 무엇이 되는지 컴퓨터마다 다르다. 되는 것을 찾는다.
 $PyExe = $null; $PyPre = @()
 foreach ($cand in @("python", "py", "python3")) {
   if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
@@ -60,19 +57,38 @@ switch ($a) {
 Write-Host "     -> $($DWS -join ', ') mm" -ForegroundColor Green
 Write-Host ""
 
-# ---- 2. 최적화 횟수 ---------------------------------------------------------
-Write-Host "  2. 최적화를 몇 번 반복할까요?" -ForegroundColor White
+# ---- 2. 턴수 상한 -----------------------------------------------------------
+Write-Host "  2. 코일 하나당 감을 수 있는 최대 턴수는?" -ForegroundColor White
+Write-Host "     손으로 감는 현실적 한계입니다. 쉼표로 여러 개를 넣으면 각각 돌려서 비교표를 만듭니다." -ForegroundColor DarkGray
+Write-Host "     0 을 넣으면 제한 없이 돌립니다(턴수가 천 단위로 올라가고 훨씬 오래 걸립니다)." -ForegroundColor DarkGray
+$t = Read-Host "     턴수 [기본 200,300,400]"
+if ([string]::IsNullOrWhiteSpace($t)) { $t = "200,300,400" }
+$TURNS = @()
+$bad = $false
+foreach ($x in ($t -split ',')) {
+  $x = $x.Trim()
+  if ($x -match '^\d+$') { $TURNS += [int]$x } else { $bad = $true }
+}
+if ($bad -or $TURNS.Count -eq 0) {
+  Write-Host "     숫자가 아닌 값이 있습니다. 200,300,400 으로 진행합니다." -ForegroundColor Red
+  $TURNS = @(200, 300, 400)
+}
+Write-Host "     -> $($TURNS -join ', ')턴" -ForegroundColor Green
+Write-Host ""
+
+# ---- 3. 최적화 횟수 ---------------------------------------------------------
+Write-Host "  3. 최적화를 몇 번 반복할까요?" -ForegroundColor White
 Write-Host "     한 번에 하나씩 처음부터 다시 찾습니다. 많을수록 더 좋은 설계가 나올 확률이 올라갑니다." -ForegroundColor DarkGray
-$r = Read-Host "     횟수 [기본 120]"
+$r = Read-Host "     횟수 [기본 1000]"
 if ($r -match '^\d+$') { $RESTARTS = [int]$r } else {
-  if ($r -ne "") { Write-Host "     숫자가 아닙니다. 120으로 진행합니다." -ForegroundColor Red }
-  $RESTARTS = 120
+  if ($r -ne "") { Write-Host "     숫자가 아닙니다. 1000으로 진행합니다." -ForegroundColor Red }
+  $RESTARTS = 1000
 }
 Write-Host "     -> $RESTARTS 번" -ForegroundColor Green
 Write-Host ""
 
-# ---- 3. 전수탐색 개수 -------------------------------------------------------
-Write-Host "  3. 무작위로 계산해볼 설계를 몇 개 뽑을까요?" -ForegroundColor White
+# ---- 4. 전수탐색 개수 -------------------------------------------------------
+Write-Host "  4. 무작위로 계산해볼 설계를 몇 개 뽑을까요?" -ForegroundColor White
 Write-Host "     엑셀의 전수탐색 시트가 됩니다. 3만 개는 몇 초면 끝납니다. 0을 넣으면 건너뜁니다." -ForegroundColor DarkGray
 $s = Read-Host "     개수 [기본 30000]"
 if ($s -match '^\d+$') { $SWEEP = [int]$s } else {
@@ -82,9 +98,9 @@ if ($s -match '^\d+$') { $SWEEP = [int]$s } else {
 Write-Host "     -> $SWEEP 개" -ForegroundColor Green
 Write-Host ""
 
-# ---- 4. 결과 폴더 이름 ------------------------------------------------------
+# ---- 5. 결과 폴더 이름 ------------------------------------------------------
 $def = Get-Date -Format "yyyy-MM-dd_HHmm"
-Write-Host "  4. 결과를 어떤 이름으로 저장할까요?" -ForegroundColor White
+Write-Host "  5. 결과를 어떤 이름으로 저장할까요?" -ForegroundColor White
 $NAME = Read-Host "     이름 [기본 $def]"
 if ([string]::IsNullOrWhiteSpace($NAME)) { $NAME = $def }
 $OUT = "runs/$NAME"
@@ -95,8 +111,11 @@ Write-Host ""
 $CORES = [int]$env:NUMBER_OF_PROCESSORS
 if ($CORES -lt 1) { $CORES = 4 }
 $GENS = 300
-$est = [int](($RESTARTS * 5.6 / $CORES + 15) * $DWS.Count)
+$sec = if ($TURNS -contains 0) { 5.6 } else { 1.5 }
+$runs = $DWS.Count * $TURNS.Count
+$est = [int](($RESTARTS * $sec / $CORES + 15) * $runs)
 Write-Host "  ------------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host ("  실행 횟수: {0}회  (굵기 {1} x 턴수상한 {2})" -f $runs, $DWS.Count, $TURNS.Count)
 Write-Host ("  예상 소요 시간: 약 {0}분 {1}초   (코어 {2}개 사용)" -f [int]($est / 60), ($est % 60), $CORES)
 Write-Host "  도중에 멈추려면 Control + C 를 누르세요." -ForegroundColor DarkGray
 Write-Host ""
@@ -107,15 +126,18 @@ Write-Host ""
 # ---- 실행 -------------------------------------------------------------------
 $start = Get-Date
 $DIRS = @()
-foreach ($DW in $DWS) {
-  $TAG = "dw" + ($DW -replace '\.', '')
-  Write-Host "  [$DW mm] 계산 중..." -ForegroundColor White
-  & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --out "$OUT/$TAG"
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "  실행 중 문제가 생겼습니다." -ForegroundColor Red
-    Pause-Exit 1
+foreach ($T in $TURNS) {
+  $TTAG = if ($T -eq 0) { "turns무제한" } else { "turns$T" }
+  foreach ($DW in $DWS) {
+    $TAG = "dw" + ($DW -replace '\.', '')
+    Write-Host "  [턴수 $T · $DW mm] 계산 중..." -ForegroundColor White
+    & node runner/run.mjs --dw $DW --restarts $RESTARTS --gens $GENS --mc 500 --sweep $SWEEP --workers $CORES --max-turns $T --out "$OUT/$TTAG/$TAG"
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  실행 중 문제가 생겼습니다." -ForegroundColor Red
+      Pause-Exit 1
+    }
+    $DIRS += "$OUT/$TTAG/$TAG"
   }
-  $DIRS += "$OUT/$TAG"
 }
 
 Write-Host ""
@@ -132,7 +154,7 @@ Write-Host ""
 Write-Host ("  끝났습니다. ({0}분 {1}초 걸렸습니다)" -f [int]($elapsed / 60), ($elapsed % 60)) -ForegroundColor Green
 Write-Host ""
 Write-Host "  엑셀 파일: $XLSX" -ForegroundColor White
-Write-Host "  요약 보고서는 각 굵기 폴더의 report.md 에 있습니다." -ForegroundColor DarkGray
+Write-Host "  굵기비교 시트에서 턴수 상한별 성적을 나란히 보실 수 있습니다." -ForegroundColor DarkGray
 Write-Host ""
 try { Start-Process explorer.exe (Resolve-Path $OUT).Path } catch {}
 Pause-Exit 0
