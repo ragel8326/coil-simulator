@@ -5,7 +5,7 @@
 // See ../README.md and the implementation spec this was built from for the
 // rationale behind each stage.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { parallelMultiStart, neighborSearch, STRUCT_VARS, NEIGHBOR_VARS } from "./search.mjs";
+import { parallelMultiStart, neighborSearch, searchVars, STRUCT_VARS, NEIGHBOR_VARS } from "./search.mjs";
 import { reRankByRobustness } from "./robust.mjs";
 import { randomSweep } from "./sweep.mjs";
 import { gapSweep } from "./gapsweep.mjs";
@@ -27,6 +27,7 @@ function parseArgs(argv) {
     maxTurns: 0,       // 코일 하나당 총 턴수 상한 (0 = 무제한)
     candidates: 50,   // 공차 검사까지 넘길 상위 설계 수 (예전에는 10개로 고정돼 있었다)
     sweep: 30000,
+    fix: {},           // 고정할 변수 (예: {R1: 24}) — --fix 로 설정, 비어있으면 8개 변수 모두 탐색
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -45,6 +46,31 @@ function parseArgs(argv) {
       case "--candidates": args.candidates = +next(); break;
       case "--max-turns": args.maxTurns = +next(); break;
       case "--dim-step": args.dimStep = +next(); break;
+      case "--fix": {
+        // "--fix R1=24" 또는 "--fix R1=24,m1=50" 처럼 쉼표로 여러 개.
+        // 팀이 코일1 반경을 48mm(반경 24mm)로 확정한 경우: --fix R1=24
+        const raw = next();
+        const knownKeys = STRUCT_VARS.map(v => v.k);
+        for (const pair of raw.split(",")) {
+          const eq = pair.indexOf("=");
+          if (eq <= 0) {
+            console.error(`--fix 형식 오류: "${pair}" (예: R1=24)`);
+            process.exit(1);
+          }
+          const k = pair.slice(0, eq).trim();
+          const v = Number(pair.slice(eq + 1).trim());
+          if (!knownKeys.includes(k)) {
+            console.error(`--fix 알 수 없는 변수 "${k}". 사용 가능: ${knownKeys.join(", ")}`);
+            process.exit(1);
+          }
+          if (!Number.isFinite(v)) {
+            console.error(`--fix ${k} 값이 숫자가 아닙니다: "${pair.slice(eq + 1)}"`);
+            process.exit(1);
+          }
+          args.fix[k] = v;
+        }
+        break;
+      }
       default:
         console.error(`Unknown argument: ${a}`);
         process.exit(1);
@@ -69,11 +95,32 @@ function defaultS0(dw_mm) {
   return { I: 1, dw, d, c1, c2, xa: 0, xb: d, h1: 25, h2: 10, jsafe: 5, reqSolo25: true, maxTurns: 0, dimStep: 0.1 };
 }
 
+// Maps each OPTVARS key to how fixing it changes S0 (the base design that
+// packFromVec()'s `{...base}` spread falls back to for any variable excluded
+// from the search list). R1/R2/d are stored on S0 in metres like the rest of
+// the coil geometry, so the mm value from --fix is divided by 1000; d also
+// keeps S0.xb in sync since defaultS0() sets xb = d.
+const FIX_SETTERS = {
+  R1: (S0, v) => { S0.c1.R = v / 1000; },
+  m1: (S0, v) => { S0.c1.m = v; },
+  n1: (S0, v) => { S0.c1.n = v; },
+  R2: (S0, v) => { S0.c2.R = v / 1000; },
+  m2: (S0, v) => { S0.c2.m = v; },
+  n2: (S0, v) => { S0.c2.n = v; },
+  d: (S0, v) => { S0.d = v / 1000; S0.xb = S0.d; },
+  I: (S0, v) => { S0.I = v; },
+};
+
+function applyFix(S0, fix) {
+  for (const [k, v] of Object.entries(fix)) FIX_SETTERS[k](S0, v);
+}
+
 async function runForWireGauge(dw, args, rawSink) {
   const S0 = defaultS0(dw);
   S0.maxTurns = args.maxTurns || 0;
   S0.dimStep = args.dimStep ?? 0.1;
-  const act = STRUCT_VARS;
+  applyFix(S0, args.fix);
+  const act = searchVars(STRUCT_VARS, args.fix);
   const lo = act.map(v => v.min), hi = act.map(v => v.max);
   const dirs = [1, -1];
   const opts = { restarts: args.restarts, gens: args.gens, mode: args.objective, minWin: args.minWin, dirs, workers: args.workers };
@@ -97,7 +144,7 @@ async function runForWireGauge(dw, args, rawSink) {
 
   if (args.sweep > 0) {
     process.stderr.write(`[dw=${dw}mm] Stage S: random sweep of ${args.sweep} designs...\n`);
-    for (const row of randomSweep(S0, args.sweep)) rawSink.sweep.push(row);
+    for (const row of randomSweep(S0, args.sweep, { act })) rawSink.sweep.push(row);
   }
 
   process.stderr.write(`[dw=${dw}mm] Stage B: integer-grid neighbor search around top ${topN.length} feasible design(s)...\n`);
@@ -105,12 +152,13 @@ async function runForWireGauge(dw, args, rawSink) {
   // 팀은 보빈을 정수 mm 로 만들기로 했으므로, 실제로 제작할 설계는 정수 mm 쪽이다.
   // 소수점 설계와 따로 모아 자기들끼리 공차 재랭킹까지 거쳐 순위를 매긴다.
   const stageBint = [];
+  const neighborVars = searchVars(NEIGHBOR_VARS, args.fix);
   for (const cand of topN) {
-    const cont = neighborSearch(S0, NEIGHBOR_VARS, cand.params, args.objective, args.minWin, { contStep: 0.1 });
+    const cont = neighborSearch(S0, neighborVars, cand.params, args.objective, args.minWin, { contStep: 0.1 });
     rawSink.push({ stage: "B-continuous", dw_mm: dw, seed: cand.seed, ...cont });
     stageB.push({ dw_mm: dw, stage: "B", seed: cand.seed, obj: cont.obj ?? cand.obj, feasible: cont.feasible ?? cand.feasible, softOk: cont.softOk ?? cand.softOk, params: cont.params ?? cand.params, metrics: cont.metrics ?? cand.metrics });
 
-    const snapped = neighborSearch(S0, NEIGHBOR_VARS, cand.params, args.objective, args.minWin, { contStep: 1, contRange: 2, snap: true });
+    const snapped = neighborSearch(S0, neighborVars, cand.params, args.objective, args.minWin, { contStep: 1, contRange: 2, snap: true });
     rawSink.push({ stage: "B-integer-snap", dw_mm: dw, seed: cand.seed, ...snapped });
     if (snapped.improved && snapped.feasible) {
       stageBint.push({ dw_mm: dw, stage: "B-int", seed: cand.seed, obj: snapped.obj,
@@ -142,7 +190,7 @@ async function runForWireGauge(dw, args, rawSink) {
   // max-deviation is lost.
   let integerSnapTop = null, snapDelta = null;
   if (stageC.length) {
-    const snapped = neighborSearch(S0, NEIGHBOR_VARS, stageC[0].params, args.objective, args.minWin, { contStep: 1, contRange: 2, snap: true });
+    const snapped = neighborSearch(S0, neighborVars, stageC[0].params, args.objective, args.minWin, { contStep: 1, contRange: 2, snap: true });
     if (snapped.feasible) {
       integerSnapTop = snapped;
       snapDelta = snapped.metrics.maxDev - stageC[0].metrics.maxDev;
@@ -150,7 +198,7 @@ async function runForWireGauge(dw, args, rawSink) {
   }
 
   return {
-    dw, maxTurns: args.maxTurns || 0, dimStep: S0.dimStep, restarts: args.restarts, feasibleCount: feasible.length,
+    dw, maxTurns: args.maxTurns || 0, dimStep: S0.dimStep, fix: args.fix, restarts: args.restarts, feasibleCount: feasible.length,
     softOkCount: feasible.filter(r => r.softOk !== false).length,
     bestNominal: feasible.length ? feasible[0].obj : null,
     bestRobust: stageC.length ? stageC[0].robust.p95MaxDev : null,
@@ -184,7 +232,7 @@ async function main() {
   if (rawSink.sweep.length) writeRawJsonl(`${args.out}/sweep.jsonl`, rawSink.sweep);
   writeFileSync(`${args.out}/summary.json`, JSON.stringify(
     dwResults.map(r => ({
-      dw: r.dw, maxTurns: r.maxTurns, dimStep: r.dimStep, restarts: r.restarts, feasibleCount: r.feasibleCount,
+      dw: r.dw, maxTurns: r.maxTurns, dimStep: r.dimStep, fix: r.fix, restarts: r.restarts, feasibleCount: r.feasibleCount,
       softOkCount: r.softOkCount,
       bestNominal: r.bestNominal, bestRobust: r.bestRobust, snapDelta: r.snapDelta,
       bestIntegerNominal: r.bestIntegerNominal, bestIntegerRobust: r.bestIntegerRobust,

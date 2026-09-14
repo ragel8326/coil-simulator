@@ -71,6 +71,11 @@ export function writeReportMd(path, { dwResults, cliArgs }) {
   lines.push("");
   lines.push(`Generated ${new Date().toISOString()} — CLI args: \`${cliArgs.join(" ")}\``);
   lines.push("");
+  const fix = dwResults[0] && dwResults[0].fix;
+  if (fix && Object.keys(fix).length) {
+    lines.push(`**고정된 변수(탐색 대상 아님):** ${Object.entries(fix).map(([k, v]) => `${k} = ${v}`).join(", ")}`);
+    lines.push("");
+  }
   lines.push("> **Assumptions banner — values below are UNCONFIRMED unless marked otherwise.**");
   lines.push("> See `runner/assumptions.json` for the full list and reasons.");
   lines.push(">");

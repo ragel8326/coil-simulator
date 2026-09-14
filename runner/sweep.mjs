@@ -8,15 +8,20 @@
 // It is cheap: one objective evaluation costs ~0.042 ms, so 30,000 designs per
 // wire gauge take about a second. Stage A (DE) is what actually finds good
 // designs; this stage is what makes the space visible.
-import { STRUCT_VARS, evalDesign } from "./search.mjs";
+import { STRUCT_VARS, evalDesign, baseFromS0 } from "./search.mjs";
 import { mulberry32 } from "./rng.mjs";
 
-export function randomSweep(S0, n, { seed = 20260913, dirs = [1, -1] } = {}) {
+export function randomSweep(S0, n, { seed = 20260913, dirs = [1, -1], act = STRUCT_VARS } = {}) {
   const rng = mulberry32(seed);
+  // Start from S0's own values (base) for every variable, then randomize
+  // only the ones in `act`. When a variable is fixed (excluded from `act`
+  // by run.mjs's --fix), its base value — which run.mjs already set on S0 —
+  // passes through untouched instead of being overwritten by a random draw.
+  const base = { ...baseFromS0(S0), I: S0.I };
   const rows = [];
   for (let i = 0; i < n; i++) {
-    const p = {};
-    for (const v of STRUCT_VARS) {
+    const p = { ...base };
+    for (const v of act) {
       const x = v.min + rng() * (v.max - v.min);
       p[v.k] = v.int ? Math.round(x) : +x.toFixed(4);
     }
