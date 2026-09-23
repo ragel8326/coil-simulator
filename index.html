@@ -2144,10 +2144,16 @@ Click "Apply result" to update the parameters on the left.`;
         const NP = 61; let maxd = 0;
         const hs = [];
         const xshift = mod.xshift || 0;
-        const hAtXa = f(s.xa + xshift), hAtXb = f(s.xb + xshift);
+        // Target is the fixed 25 -> 10 Oe line (S0.h1 -> S0.h2), matching the
+        // 2026-09-23 switch in evaluate()/objectiveTerms(). The old endpoint
+        // secant moved up and down with the curve, so errors that shift the
+        // whole curve (current, radius, turns) barely showed up in Δmax.
+        // The window [xa, xb] stays at the nominal design values (mod never
+        // touches s.xa/s.xb), and a probe offset only shifts where the field is
+        // read — the target line itself is not shifted.
         for (let i = 0; i < NP; i++) {
           const u = i / (NP - 1), x = s.xa + (s.xb - s.xa) * u;
-          const h = f(x + xshift), t = hAtXa + (hAtXb - hAtXa) * u;
+          const h = f(x + xshift), t = S0.h1 + (S0.h2 - S0.h1) * u;
           hs.push(h); if (Math.abs(h - t) > maxd) maxd = Math.abs(h - t);
         }
         return { hStart: hs[0], hMid: hs[(NP - 1) / 2 | 0], hEnd: hs[NP - 1], maxd };
