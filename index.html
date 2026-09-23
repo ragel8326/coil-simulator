@@ -949,12 +949,26 @@
                 <div class="f"><label for="tI">Current tolerance ± (%)</label><input type="number" id="tI" value="1"
                     step="0.1">
                 </div>
-                <div class="f"><label for="tx">Probe position tolerance ± (mm)</label><input type="number" id="tx"
+                <div class="f"><label for="tx">Probe position tolerance ± (mm, along axis)</label><input type="number" id="tx"
                     value="0.5" step="0.1"></div>
               </div>
               <div class="scroll" style="margin-top:14px">
                 <table class="t" id="senstable"></table>
               </div>
+
+              <h3 class="sec" style="margin-top:22px">Off-axis Check</h3>
+              <p class="secnote">Field when the probe sits a radial distance ρ off the coil axis (full elliptic-integral
+                loop field), compared with the on-axis model over the window [0, d]. Review only — not used by the
+                optimizer.</p>
+              <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+                <div class="f"><label for="oarho">Radial offset ρ (mm, comma-separated)</label><input type="text"
+                    id="oarho" value="2"></div>
+              </div>
+              <div class="scroll" style="margin-top:14px">
+                <table class="t" id="oatable"></table>
+              </div>
+              <p class="note" style="margin-top:10px">Hz는 축 방향 프로브가 읽는 값, Hr은 프로브가 기울어졌을 때 섞여 들어가는 옆 방향 성분.
+                ΔHz = off-axis Hz − on-axis H; max deviation is measured from the fixed target line (h1 → h2).</p>
             </div>
           </div>
 
@@ -1104,6 +1118,40 @@
         s += r * r / (q * Math.sqrt(q));
       }
       return dir * I * s / 2;
+    }
+    /* 제1·제2종 완전타원적분 K(m), E(m) — 인자는 parameter m = k². 산술-기하 평균(AGM).
+       E = K · (1 − Σ 2^(n−1) c_n²),  c_0² = m,  c_(n+1) = (a_n − b_n)/2 */
+    function ellipKE(m) {
+      if (m >= 1) return { K: Infinity, E: 1 };
+      let a = 1, b = Math.sqrt(1 - m), sum = m / 2, p = 0.5;
+      for (let i = 0; i < 40; i++) {
+        const c = (a - b) / 2;
+        p *= 2; sum += p * c * c;
+        const an = (a + b) / 2; b = Math.sqrt(a * b); a = an;
+        if (Math.abs(c) < 1e-16) break;
+      }
+      const K = Math.PI / (2 * a);
+      return { K, E: K * (1 - sum) };
+    }
+    /* 축에서 반경 방향으로 rho [m] 떨어진 점의 H [A/m] — 검토용(off-axis check), 최적화에는 안 씀.
+       턴 하나(반경 a, 축 방향 거리 z):
+         q = (a+ρ)² + z², m = 4aρ/q, D = (a−ρ)² + z²
+         Hz = I/(2π√q) · [K + (a² − ρ² − z²)/D · E]
+         Hr = I z/(2π ρ √q) · [−K + (a² + ρ² + z²)/D · E]
+       (Simpson et al., NASA TR 20010038494, 2001). ρ = 0 이면 Hz는 H_pack과 같은 축상 식, Hr = 0. */
+    function H_pack_offaxis(x, rho, T, dir, I) {
+      if (rho === 0) return { Hz: H_pack(x, T, dir, I), Hr: 0 };
+      let sz = 0, sr = 0;
+      const rs = T.rs, xs = T.xs, L = rs.length;
+      for (let k = 0; k < L; k++) {
+        const a = rs[k], z = x - xs[k];
+        const q = (a + rho) * (a + rho) + z * z, D = (a - rho) * (a - rho) + z * z;
+        const { K, E } = ellipKE(4 * a * rho / q);
+        const sq = Math.sqrt(q);
+        sz += (K + (a * a - rho * rho - z * z) / D * E) / sq;
+        sr += z * (-K + (a * a + rho * rho + z * z) / D * E) / sq;
+      }
+      return { Hz: dir * I * sz / (2 * Math.PI), Hr: dir * I * sr / (2 * Math.PI * rho) };
     }
     /* 얇은 코일 근사(Model 1) */
     function H_thin(x, c, I) {
@@ -2189,6 +2237,40 @@ Click "Apply result" to update the parameters on the left.`;
       <td><b>${fmt(Math.abs(pctOf(r.dMid, base.hMid)), 2)}%</b></td>
       <td>${r.dMax >= 0 ? "+" : ""}${fmt(r.dMax, 3)} Oe</td></tr>`).join("") +
         `</tbody>`;
+      offAxisCheck();
+    }
+
+    /* Off-axis check: 축에서 ρ만큼 벗어난 프로브가 읽는 Hz와 옆 성분 Hr (검토용 표시만) */
+    function offAxisCheck() {
+      const S0 = readState();
+      const rhos = $("oarho").value.split(/[,\s]+/).map(Number).filter(v => isFinite(v) && v > 0);
+      const head = `<thead><tr><th>ρ</th><th>ΔHz at x=0</th><th>ΔHz at mid</th><th>ΔHz at x=d</th>` +
+        `<th>max |ΔHz|</th><th>Max deviation (fixed line)</th><th>max |Hr|</th></tr></thead>`;
+      if (!rhos.length) {
+        $("oatable").innerHTML = head + `<tbody><tr><td colspan="7">Enter one or more positive ρ values (mm).</td></tr></tbody>`;
+        return;
+      }
+      const T1 = coilTurns(S0.c1), T2 = coilTurns(S0.c2);
+      const axis = x => (H_pack(x, T1, S0.c1.dir, S0.I) + H_pack(x, T2, S0.c2.dir, S0.I)) / OE;
+      const NP = 61;
+      const sg = v => `${v >= 0 ? "+" : ""}${fmt(v, 3)}`;
+      const rows = rhos.map(rmm => {
+        const rho = rmm / 1000, dz = [];
+        let maxDz = 0, maxDev = 0, maxHr = 0;
+        for (let i = 0; i < NP; i++) {
+          const u = i / (NP - 1), x = S0.xa + (S0.xb - S0.xa) * u;
+          const a = H_pack_offaxis(x, rho, T1, S0.c1.dir, S0.I), b = H_pack_offaxis(x, rho, T2, S0.c2.dir, S0.I);
+          const hz = (a.Hz + b.Hz) / OE, hr = (a.Hr + b.Hr) / OE;
+          const t = S0.h1 + (S0.h2 - S0.h1) * u;
+          dz.push(hz - axis(x));
+          maxDz = Math.max(maxDz, Math.abs(dz[i]));
+          maxDev = Math.max(maxDev, Math.abs(hz - t));
+          maxHr = Math.max(maxHr, Math.abs(hr));
+        }
+        return `<tr><td>${fmt(rmm, 2)} mm</td><td>${sg(dz[0])}</td><td>${sg(dz[(NP - 1) / 2])}</td>` +
+          `<td>${sg(dz[NP - 1])}</td><td>${fmt(maxDz, 3)}</td><td>${fmt(maxDev, 3)} Oe</td><td>${fmt(maxHr, 3)}</td></tr>`;
+      });
+      $("oatable").innerHTML = head + `<tbody>${rows.join("")}</tbody>`;
     }
 
     function gauss() {
@@ -2539,6 +2621,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
     $("applyopt").addEventListener("click", applyOpt);
     $("runmc").addEventListener("click", runMC);
     ["tR", "tN", "td", "tI", "tx"].forEach(id => $(id).addEventListener("input", () => { if (!$("tab-sens").hidden) sensitivity(); }));
+    $("oarho").addEventListener("input", () => { if (!$("tab-sens").hidden) offAxisCheck(); });
     $("parsebtn").addEventListener("click", parseData);
     $("clearbtn").addEventListener("click", () => { $("raw").value = ""; measured = null; $("datanote").textContent = "Input is empty."; $("datatable").innerHTML = ""; $("datametrics").innerHTML = ""; render(); });
     $("copytable").addEventListener("click", ev => {

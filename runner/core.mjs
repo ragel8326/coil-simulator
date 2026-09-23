@@ -38,7 +38,7 @@ for (const bad of ["document.", "document[", "window.", "window[", "$("]) {
 
 const EXPORTED = [
   "OE", "RHO", "clamp",
-  "coilTurns", "turnCount", "H_pack", "H_thin", "wireLength", "resistance",
+  "coilTurns", "turnCount", "H_pack", "ellipKE", "H_pack_offaxis", "H_thin", "wireLength", "resistance",
   "evaluate", "lsq", "findInflection",
   "OPTVARS", "packFromVec", "capTurns", "snapDim", "objective", "objectiveResiduals", "refineLocal",
   "optimizeDEGen", "optimizeDE",
@@ -54,7 +54,7 @@ const mod = await import(
 
 export const {
   OE, RHO, clamp,
-  coilTurns, turnCount, H_pack, H_thin, wireLength, resistance,
+  coilTurns, turnCount, H_pack, ellipKE, H_pack_offaxis, H_thin, wireLength, resistance,
   evaluate, lsq, findInflection,
   OPTVARS, packFromVec, capTurns, snapDim, objective, objectiveResiduals, refineLocal,
   optimizeDEGen, optimizeDE,

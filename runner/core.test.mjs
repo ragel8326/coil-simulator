@@ -171,3 +171,25 @@ test("judge() reports feasible=true for a design that clears every threshold", (
   assert.ok(violations.currentDensity <= 0, "0.6A at 0.5mm wire should clear the 5 A/mm^2 limit");
   assert.ok(violations.current <= 0);
 });
+
+// ---- Off-axis field (review-only Sensitivity-tab check) ------------------
+test("ellipKE() matches reference K(m), E(m) values", () => {
+  const z = core.ellipKE(0);
+  assert.ok(Math.abs(z.K - Math.PI / 2) < 1e-12 && Math.abs(z.E - Math.PI / 2) < 1e-12);
+  const h = core.ellipKE(0.5);
+  assert.equal(h.K.toFixed(6), "1.854075");
+  assert.equal(h.E.toFixed(6), "1.350644");
+});
+
+// A 중심설계: as rho -> 0 the off-axis Hz must reduce to the on-axis H_pack value.
+test("H_pack_offaxis() at rho=1e-6 m reproduces the on-axis field at x=0", () => {
+  const dw = 0.5 / 1000, d = 53.6 / 1000;
+  const T1 = core.coilTurns({ R: 46.25 / 1000, m: 40, n: 5, last: 26, dw, xc: 0 });
+  const T2 = core.coilTurns({ R: 22.25 / 1000, m: 20, n: 1, last: 11, dw, xc: d });
+  const onAxis = (core.H_pack(0, T1, 1, 1) + core.H_pack(0, T2, 1, 1)) / core.OE;
+  const a = core.H_pack_offaxis(0, 1e-6, T1, 1, 1), b = core.H_pack_offaxis(0, 1e-6, T2, 1, 1);
+  const hz = (a.Hz + b.Hz) / core.OE;
+  assert.equal(onAxis.toFixed(4), "24.9597");
+  assert.equal(hz.toFixed(4), "24.9597");
+  assert.deepEqual(core.H_pack_offaxis(0, 0, T1, 1, 1), { Hz: core.H_pack(0, T1, 1, 1), Hr: 0 });
+});
