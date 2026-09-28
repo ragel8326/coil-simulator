@@ -995,7 +995,9 @@
             <div class="panel-body">
               <h3 class="sec">Repeated Measurement Input</h3>
               <p class="secnote">One line per point: <code>distance(mm), reading1, reading2 ...</code> — matching
-                distances are grouped automatically to compute the mean and STDEV (n&minus;1).</p>
+                distances are grouped automatically to compute the mean and STDEV (n&minus;1).
+                <br>엑셀/CSV 파일은 <b>Load file</b> 버튼이나 이 칸에 끌어다 놓기로 불러올 수 있습니다
+                (첫 열 = 거리 mm, 다음 열들 = 반복 측정값 Oe, 첫 번째 시트만 읽음, 머리글 행은 자동으로 건너뜀, 머리글이 평균·표준편차인 열은 측정값에서 제외).</p>
               <textarea id="raw" rows="9" spellcheck="false">14.0, 24.20, 24.26, 24.20
 17.2, 22.68, 22.63, 22.60
 20.4, 20.88, 20.88, 20.89
@@ -1009,6 +1011,8 @@
                 <button class="act" type="button" id="parsebtn">Compute</button>
                 <button class="act ghost" type="button" id="clearbtn">Clear</button>
                 <button class="act ghost" type="button" id="copytable">Copy table</button>
+                <button class="act ghost" type="button" id="loadfile" title="CSV / TSV / TXT / XLSX">Load file</button>
+                <input type="file" id="datafile" accept=".csv,.tsv,.txt,.xlsx" hidden>
                 <span class="note" id="datanote">Sample data is preloaded &mdash; replace it with your own
                   measurements.</span>
               </div>
@@ -2334,7 +2338,8 @@ Click "Apply result" to update the parameters on the left.`;
       const map = new Map();
       let bad = 0;
       txt.split(/\n+/).forEach(line => {
-        const parts = line.trim().split(/[\s,;\t]+/).map(Number).filter(v => !isNaN(v));
+        // 빈 토큰 제거: CSV 끝의 빈 칸("14,24.2,24.3,")이 Number("")=0 으로 읽혀 0 Oe 측정값이 섞이는 것 방지
+        const parts = line.trim().split(/[\s,;\t]+/).filter(t => t !== "").map(Number).filter(v => !isNaN(v));
         if (parts.length < 2) { if (line.trim()) bad++; return; }
         const x = +parts[0].toFixed(4);
         if (!map.has(x)) map.set(x, []);
@@ -2353,6 +2358,127 @@ Click "Apply result" to update the parameters on the left.`;
       $("datanote").innerHTML = `${keys.length} points · ${minN}–${Math.max(...measured.n)} readings per point`
         + (minN < 3 ? ` <b style="color:var(--warn)">— some points have fewer than the required 3 readings.</b>` : "");
       render();
+    }
+
+    /* ---- 측정 파일 불러오기 (CSV/TSV/TXT/XLSX, 외부 라이브러리 없음) ----
+       결과는 입력창에 "거리, 측정1, 측정2 ..." 텍스트로 채운 뒤 기존 parseData()로 계산한다.
+       → 불러온 값이 화면에 그대로 보이므로 틀린 값이 섞였는지 눈으로 확인 가능. */
+    function cellsToLines(rows) {
+      let skipped = 0;
+      const lines = [];
+      // 머리글에 평균/표준편차 같은 요약 열이 있으면 그 열은 측정값이 아니므로 제외
+      const SUMMARY = /평균|편차|표준|오차|mean|avg|average|std|stdev|sd|error|model|모델|이론/i;
+      const exclude = new Set();
+      rows.forEach(r => {
+        const cells = [...r].map(c => String(c ?? "").trim());
+        if (!cells.some(c => c !== "")) return;
+        const first = cells.find(c => c !== "");
+        // 첫 칸이 숫자가 아닌 행(머리글, 메모)은 건너뜀 — 머리글이면 요약 열 위치를 기억
+        if (!isFinite(Number(first))) {
+          cells.forEach((c, j) => { if (SUMMARY.test(c)) exclude.add(j); });
+          skipped++; return;
+        }
+        const vals = cells.map((c, j) => (c === "" || exclude.has(j)) ? NaN : Number(c)).filter(v => isFinite(v));
+        if (vals.length < 2) { skipped++; return; }
+        lines.push(vals.join(", "));
+      });
+      return { lines, skipped, excluded: exclude.size };
+    }
+
+    function splitDelimited(text) {
+      const first = text.split(/\r?\n/).find(l => l.trim()) || "";
+      const delim = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
+      return text.split(/\r?\n/).map(line => line.split(delim).map(c => c.replace(/^"|"$/g, "")));
+    }
+
+    async function readTextSmart(file) {
+      const buf = await file.arrayBuffer();
+      let t = new TextDecoder("utf-8").decode(buf);
+      // 한글 윈도우 엑셀의 CSV(EUC-KR) 대비 — 숫자는 영향 없지만 머리글이 깨지지 않게
+      if (t.includes("\uFFFD")) { try { t = new TextDecoder("euc-kr").decode(buf); } catch (e) { } }
+      return t.replace(/^\uFEFF/, "");
+    }
+
+    async function unzipEntries(buf) {
+      const dv = new DataView(buf), u8 = new Uint8Array(buf);
+      let eocd = -1;
+      for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) {
+        if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) throw new Error("xlsx(zip) 형식이 아닙니다");
+      const count = dv.getUint16(eocd + 10, true);
+      let p = dv.getUint32(eocd + 16, true);
+      const out = {};
+      const dec = new TextDecoder("utf-8");
+      for (let k = 0; k < count; k++) {
+        const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+        const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+        const lho = dv.getUint32(p + 42, true);
+        const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+        p += 46 + nlen + elen + clen;
+        if (!/\.(xml|rels)$/.test(name)) continue;
+        const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+        const data = u8.subarray(start, start + csize);
+        out[name] = async () => {
+          if (method === 0) return dec.decode(data);
+          const ds = new DecompressionStream("deflate-raw");
+          return dec.decode(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer());
+        };
+      }
+      return out;
+    }
+
+    async function readXlsxRows(file) {
+      const z = await unzipEntries(await file.arrayBuffer());
+      const xml = async n => z[n] ? new DOMParser().parseFromString(await z[n](), "application/xml") : null;
+      const byTag = (doc, tag) => doc ? [...doc.getElementsByTagNameNS("*", tag)] : [];
+      // 첫 번째 시트 경로 찾기
+      let sheetPath = "xl/worksheets/sheet1.xml";
+      const wb = await xml("xl/workbook.xml"), rels = await xml("xl/_rels/workbook.xml.rels");
+      const firstSheet = byTag(wb, "sheet")[0];
+      if (firstSheet && rels) {
+        const rid = firstSheet.getAttribute("r:id") ||
+          firstSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+        const rel = byTag(rels, "Relationship").find(r => r.getAttribute("Id") === rid);
+        if (rel) {
+          const t = rel.getAttribute("Target");
+          sheetPath = t.startsWith("/") ? t.slice(1) : "xl/" + t.replace(/^\.\//, "");
+        }
+      }
+      const shared = byTag(await xml("xl/sharedStrings.xml"), "si").map(si => byTag(si, "t").map(t => t.textContent).join(""));
+      const sheet = await xml(sheetPath);
+      if (!sheet) throw new Error("시트를 찾지 못했습니다");
+      const colIdx = ref => { let n = 0; for (const ch of ref.replace(/\d+/g, "")) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+      return byTag(sheet, "row").map(row => {
+        const arr = [];
+        byTag(row, "c").forEach((c, i) => {
+          const t = c.getAttribute("t"), v = byTag(c, "v")[0];
+          let val = "";
+          if (t === "s") val = v ? shared[+v.textContent] ?? "" : "";
+          else if (t === "inlineStr") val = byTag(c, "t").map(x => x.textContent).join("");
+          else val = v ? v.textContent : "";   // 숫자는 표시 반올림 없이 저장된 원래 값
+          const r = c.getAttribute("r");
+          arr[r ? colIdx(r) : i] = val;
+        });
+        return arr;
+      });
+    }
+
+    async function loadMeasurementFile(file) {
+      if (!file) return;
+      try {
+        $("datanote").textContent = `Reading ${file.name} …`;
+        const rows = /\.xlsx$/i.test(file.name) ? await readXlsxRows(file) : splitDelimited(await readTextSmart(file));
+        const { lines, skipped, excluded } = cellsToLines(rows);
+        if (!lines.length) { $("datanote").textContent = `${file.name}: 숫자 행을 찾지 못했습니다 (첫 열 = 거리 mm).`; return; }
+        $("raw").value = lines.join("\n");
+        parseData();
+        $("datanote").innerHTML = `<b>${file.name}</b> 불러옴 · ${lines.length}행` +
+          (skipped ? ` (머리글/빈 행 ${skipped}개 건너뜀)` : "") +
+          (excluded ? ` · 평균/표준편차 등 요약 열 ${excluded}개 제외` : "") + " · " + $("datanote").innerHTML;
+      } catch (err) {
+        $("datanote").textContent = `${file.name}: 읽기 실패 — ${err.message}`;
+      }
     }
 
     function renderData() {
@@ -2623,6 +2749,13 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
     ["tR", "tN", "td", "tI", "tx"].forEach(id => $(id).addEventListener("input", () => { if (!$("tab-sens").hidden) sensitivity(); }));
     $("oarho").addEventListener("input", () => { if (!$("tab-sens").hidden) offAxisCheck(); });
     $("parsebtn").addEventListener("click", parseData);
+    $("loadfile").addEventListener("click", () => $("datafile").click());
+    $("datafile").addEventListener("change", e => { loadMeasurementFile(e.target.files[0]); e.target.value = ""; });
+    $("raw").addEventListener("dragover", e => { e.preventDefault(); });
+    $("raw").addEventListener("drop", e => {
+      if (!e.dataTransfer.files.length) return;
+      e.preventDefault(); loadMeasurementFile(e.dataTransfer.files[0]);
+    });
     $("clearbtn").addEventListener("click", () => { $("raw").value = ""; measured = null; $("datanote").textContent = "Input is empty."; $("datatable").innerHTML = ""; $("datametrics").innerHTML = ""; render(); });
     $("copytable").addEventListener("click", ev => {
       if (!measured) return;
