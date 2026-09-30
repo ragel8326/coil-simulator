@@ -1248,6 +1248,7 @@
                     <div class="f full"><label for="ab_rho">프로브 축 이탈 ρ = <b id="ab_rhov">0</b> mm</label>
                       <input type="range" id="ab_rho" min="0" max="15" step="0.5" value="0"></div>
                   </div>
+                  <div class="ab-derived" id="ab_dv3"></div>
                   <p class="note" style="margin:9px 0 0">목표 직선: x = 0 에서 25 Oe → x = G 에서 10 Oe. ΔI 띠는 실험 중 발열로 전류가
                     흔들린 범위를 보여주는 용도입니다. ρ &gt; 0 이면 타원적분 식(H_pack_offaxis)의 축 방향 성분 Hz 를 씁니다.</p>
                 </div>
@@ -3583,6 +3584,11 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
         `턴 반경 <b>${f2(r2)}</b> mm · 권선 x = <b>${f1(g.G + g.t)} ~ ${f1(g.G + g.t + g.W2)}</b> mm<br>` +
         (g.N2 > 0 ? `턴 중심 <b>${f2(s + g.dw / 2)} ~ ${f2(s + g.dw * (g.N2 - 0.5))}</b> mm` : "턴 없음") +
         (over ? `<br><span class="bad">N2·dw = ${f2(g.N2 * g.dw)} mm 가 감기 폭 W2 보다 큼</span>` : "");
+      // 코일 중심 간 거리: 코일1 중심→바깥면 (W1/2 + t), 코일2 중심→바깥면 (W2/2 + t)
+      const e1 = g.W1 / 2 + g.t, e2 = g.W2 / 2 + g.t, dC = g.G + e1 + e2, D_DESIGN = 53.6;
+      $("ab_dv3").innerHTML =
+        `코일 중심 간 거리 d = G + ${f1(e1)} + ${f1(e2)} = <b>${f1(dC)}</b> mm<br>` +
+        `설계값 d = ${D_DESIGN} mm 는 G = <b>${f1(D_DESIGN - e1 - e2)}</b> mm 에 해당`;
     }
 
     function abRender() {
