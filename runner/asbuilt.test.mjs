@@ -71,7 +71,7 @@ test("default model (I=1, ρ=0) matches the reference field values", () => {
   nearAll(X.map(x => M.unit(x).total), [25.99, 23.78, 21.36, 18.96, 16.75, 14.85, 13.32, 12.17, 11.27], 0.01, "H");
 });
 
-test("9/29 data: estimated current, RMS and straight-line deviations", () => {
+test("9/29 data: RMS vs model and straight-line deviations at the entered I", () => {
   const parsed = ab.abParseCSV(CSV_0929);
   assert.equal(parsed.points.length, 9);
   assert.deepEqual(parsed.points.map(p => p.order), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
@@ -79,10 +79,11 @@ test("9/29 data: estimated current, RMS and straight-line deviations", () => {
 
   const g = ab.AB_DEFAULTS;
   const A = ab.abAnalyze(g, ab.abModel(g), parsed.points);
-  near(A.Iest, 0.953, 0.001, "estimated I");
-  near(A.rmsEst, 0.34, 0.01, "RMS at estimated I");
-  assert.equal(A.I, 1, "display current is the entered I, not the estimate");
-  nearAll(A.modelDevEst, [0.00, -0.35, -0.90, -1.44, -1.79, -1.85, -1.55, -0.90, 0.00], 0.01, "model chord dev (Iest)");
+  assert.equal(A.I, 1, "model uses the entered I");
+  assert.equal(A.Iest, undefined, "no back-calculated current");
+  near(A.rms, 0.92, 0.01, "RMS measured − model at I=1");
+  // I=1 에서의 모델 직선 이탈 (예전 추정 I=0.953 기준값 0 −0.35 −0.90 … 을 1/0.953 배 한 것과 같음)
+  nearAll(A.modelDev, [0.00, -0.37, -0.94, -1.51, -1.88, -1.94, -1.63, -0.94, 0.00], 0.01, "model chord dev (I=1)");
   nearAll(A.measDev, [0.00, -0.37, -1.07, -1.70, -2.07, -2.30, -1.77, -0.53, 0.00], 0.01, "measured chord dev");
   assert.equal(A.measEnds.approx, false);
 });

@@ -806,47 +806,6 @@
       font-family: var(--mono)
     }
 
-    .ab-iest {
-      border-top: 1px solid var(--line-soft)
-    }
-
-    .ab-iest-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      flex-wrap: wrap
-    }
-
-    .ab-iest .ab-k {
-      font-size: 11px;
-      color: var(--muted)
-    }
-
-    .ab-iest .ab-v {
-      font-family: var(--mono);
-      font-size: 17px;
-      font-weight: 500;
-      margin: 3px 0;
-      font-variant-numeric: tabular-nums
-    }
-
-    .ab-iest .ab-v span {
-      font-size: 12px;
-      color: var(--ink-2);
-      font-weight: 400
-    }
-
-    .ab-flag {
-      display: inline-block;
-      font-size: 11.5px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 3px;
-      background: var(--warn-bg);
-      color: var(--warn)
-    }
-
   </style>
 </head>
 
@@ -1285,7 +1244,7 @@
                   <div class="fields">
                     <div class="f full"><label for="ab_G">플랜지 바깥면 사이 거리 G (mm)</label><input type="number" id="ab_G" value="40" step="0.5" min="1"></div>
                     <div class="f"><label for="ab_I">전류 I (A)</label><input type="number" id="ab_I" value="1" step="0.01" min="0"></div>
-                    <div class="f"><label for="ab_dI">전류 불확도 ±ΔI (A)</label><input type="number" id="ab_dI" value="0.1" step="0.01" min="0"></div>
+                    <div class="f"><label for="ab_dI">전류 불확도 ±ΔI (A)</label><input type="number" id="ab_dI" value="0.01" step="0.005" min="0"></div>
                     <div class="f full"><label for="ab_rho">프로브 축 이탈 ρ = <b id="ab_rhov">0</b> mm</label>
                       <input type="range" id="ab_rho" min="0" max="15" step="0.5" value="0"></div>
                   </div>
@@ -1315,7 +1274,6 @@
               <div class="panel" style="margin-top:14px">
                 <h2>지표 (Oe)</h2>
                 <div class="metrics" id="ab_metrics" style="border-top:0"></div>
-                <div class="panel-body ab-iest" id="ab_iestbox"></div>
               </div>
 
               <!-- 그래프 2 -->
@@ -1338,7 +1296,7 @@
                 <div class="legend" id="ab_legend3"></div>
                 <div class="panel-body" style="border-top:1px solid var(--line-soft);padding-top:10px">
                   <p class="note" style="margin:0 0 10px">각 곡선에서 자기 자신의 양 끝값을 이은 직선을 빼서, 전류 크기와 상관없이 &ldquo;휘어진 모양&rdquo;만
-                    비교하려는 그래프입니다. (단, 휨의 깊이는 전류에 비례하므로 측정 데이터가 있으면 추정 I 로 그린 모델도 점선으로 같이 그립니다.)</p>
+                    비교하려는 그래프입니다.</p>
                   <button class="act ghost" type="button" id="ab_dl3">그래프 PNG</button>
                 </div>
               </div>
@@ -1916,7 +1874,7 @@
       // 코일2
       R2b: 22, W2: 10, N2: 11, dw: 0.5, c2Place: "near", dir2: 1,
       // 배치·전류·프로브
-      G: 40, I: 1, dI: 0.1, rho: 0,
+      G: 40, I: 1, dI: 0.01, rho: 0,
       // 목표 직선 (x=0 → x=G)
       h1: 25, h2: 10,
     });
@@ -2069,11 +2027,6 @@
       const resid = meas.map((m, i) => m - I * hu[i]);
       const rms = Math.sqrt(resid.reduce((p, q) => p + q * q, 0) / resid.length);
       const meanResid = resid.reduce((p, q) => p + q, 0) / resid.length;
-      // 전류 추정: I = Σ(H_model·H_meas) / Σ(H_model²), H_model 은 I=1A 기준
-      let sxy = 0, sxx = 0;
-      hu.forEach((h, i) => { sxy += h * meas[i]; sxx += h * h; });
-      const Iest = sxx > 0 ? sxy / sxx : NaN;
-      const rmsEst = Math.sqrt(meas.reduce((p, m, i) => p + (m - Iest * hu[i]) ** 2, 0) / meas.length);
       // 직선 이탈
       const ends = abMeasEnds(points, G);
       const measDev = abChordDev(xs, meas, ends.xa, ends.ya, ends.xb, ends.yb);
@@ -2083,11 +2036,8 @@
       return Object.assign(out, {
         xs, meas, hu, resid, rms, meanResid,
         targetMax: tN ? tMax : NaN, targetRmse: tN ? Math.sqrt(tSse / tN) : NaN,
-        Iest, rmsEst,
         measEnds: ends, measDev, measSag: measDev[jm], measSagAt: xs[jm],
-        modelDev: modelDevUnit.map(v => I * v),
-        modelDevEst: modelDevUnit.map(v => Iest * v),
-        modelSagEst: Iest * gdev[km],
+        modelDevUnit, modelDev: modelDevUnit.map(v => I * v),
       });
     }
     /* ==== ASBUILT-CORE-END ==== */
@@ -3376,7 +3326,6 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
 40,10.3,10.5,10.2`;
     const abSeg = { ab_mode: "uniform", ab_side: "coil2", ab_dir2: "1" };
     let abPoints = [];      // abParseCSV(..).points — 행 순서 = 측정 순서
-    let abLast = null;      // 마지막 계산 결과 (추정 I 적용 버튼용)
 
     function abSetSeg(id, v) {
       abSeg[id] = v;
@@ -3542,7 +3491,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       ov.addEventListener("mouseleave", () => { tip.style.opacity = 0; tip.style.left = "0px"; ch.setAttribute("opacity", 0); });
 
       const items = [[`모델 (I = ${fmt(I, 3)} A)`, cModel, "solid"]];
-      if (g.dI > 0) items.push([`전류 ±${fmt(g.dI, 2)} A 범위`, cModel, "band"]);
+      if (g.dI > 0) items.push([`전류 ±${fmt(g.dI, 3)} A 범위`, cModel, "band"]);
       items.push(["목표 직선 25→10 Oe", cInk2, "dash"]);
       if (abPoints.length) items.push(["실측 평균 ± 표준편차 (P = 측정 순서)", cMeas, "solid"]);
       if (showParts) items.push(["코일1 기여", cModel, "dot"], ["코일2 기여", cThin, "dot"]);
@@ -3575,7 +3524,7 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       const devU = abChordDev(gx, gu, 0, A.u0, g.G, A.uG);
       const has = abPoints.length > 0;
       const vals = [0, ...devU.map(v => I * v)];
-      if (has) { vals.push(...devU.map(v => A.Iest * v)); A.measDev.forEach((v, i) => vals.push(v - abPoints[i].sd, v + abPoints[i].sd)); }
+      if (has) { A.measDev.forEach((v, i) => vals.push(v - abPoints[i].sd, v + abPoints[i].sd)); }
       let lo = Math.min(...vals), hi = Math.max(...vals);
       const p = Math.max(0.2, (hi - lo) * 0.12); lo -= p; hi += p;
       const { X, Y, pw } = abFrame(svg, W, Hh, pad, x0, x1, lo, hi, 1, "직선 이탈 (Oe)");
@@ -3586,10 +3535,8 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       abPath(svg, gx, devU.map(v => I * v), X, Y, { stroke: cModel, "stroke-width": 2.2 });
       const items = [[`모델 (I = ${fmt(I, 3)} A)`, cModel, "solid"]];
       if (has) {
-        abPath(svg, gx, devU.map(v => A.Iest * v), X, Y, { stroke: cModel, "stroke-width": 1.5, "stroke-dasharray": "6 4", opacity: .8 });
         abPath(svg, A.xs, A.measDev, X, Y, { stroke: cMeas, "stroke-width": 1, opacity: .5 });
         abDrawPoints(svg, abPoints, A.measDev, abPoints.map(p => p.sd), X, Y, cMeas, true);
-        items.push([`모델 (추정 I = ${fmt(A.Iest, 3)} A, 역산값)`, cModel, "dash"]);
         items.push([A.measEnds.approx
           ? `실측 (끝점: x=${A.measEnds.xa}, x=${A.measEnds.xb} mm — x=0/x=G 측정점 없음)`
           : "실측 평균 ± 표준편차", cMeas, "solid"]);
@@ -3609,18 +3556,8 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
         cell("실측 vs 모델 · 평균 잔차", d(A.meanResid), "Oe", "실측 − 모델"),
         cell("가운데 처짐 · 실측 최소", d(A.measSag), "Oe", has ? `x = ${fmt(A.measSagAt, 1)} mm` : ""),
         cell("가운데 처짐 · 모델 최소", fmt(A.modelSag, 2), "Oe",
-          `x = ${fmt(A.modelSagAt, 1)} mm, 현재 I` + (has ? ` · 추정 I: ${fmt(A.modelSagEst, 2)}` : "")),
+          `x = ${fmt(A.modelSagAt, 1)} mm, 현재 I`),
       ].join("");
-      $("ab_iestbox").innerHTML = has
-        ? `<div class="ab-iest-row">
-             <div>
-               <div class="ab-k">전류 추정 &mdash; 모델을 실측에 가장 잘 맞추는 I = Σ(H<sub>model</sub>·H<sub>meas</sub>) / Σ(H<sub>model</sub>²), H<sub>model</sub>은 1 A 기준</div>
-               <div class="ab-v">I ≈ ${fmt(A.Iest, 3)} A <span>· 그때 RMS ${fmt(A.rmsEst, 2)} Oe</span></div>
-               <div class="ab-flag">역산한 추정값 — 측정한 전류 아님</div>
-             </div>
-             <button class="act ghost" type="button" id="ab_applyI">추정 I 적용</button>
-           </div>`
-        : `<p class="note" style="margin:0">측정 데이터를 불러오면 실측 지표와 전류 추정(역산값)이 표시됩니다.</p>`;
     }
 
     function abTableHtml(g, A) {
@@ -3659,7 +3596,6 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
 
       const M = abModel(g);
       const A = abAnalyze(g, M, abPoints);
-      abLast = { g, A };
       const x0 = -5, x1 = g.G + 5, NP = 241, xs = [], u1 = [], u2 = [];
       for (let i = 0; i < NP; i++) {
         const x = x0 + (x1 - x0) * i / (NP - 1), u = M.unit(x);
@@ -3717,11 +3653,6 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       const rd = new FileReader();
       rd.onload = () => { $("ab_raw").value = String(rd.result); abParseData(); };
       rd.readAsText(f);
-    });
-    // 추정 I 는 버튼을 누를 때만 I 칸에 넣는다 (자동 적용하지 않음)
-    $("ab_iestbox").addEventListener("click", ev => {
-      if (!ev.target.closest("#ab_applyI") || !abLast || !isFinite(abLast.A.Iest)) return;
-      $("ab_I").value = abLast.A.Iest.toFixed(3); abRender();
     });
     $("ab_dl1").addEventListener("click", () => exportChartPng("ab_chart1", "ab_legend1", "asbuilt-field.png"));
     $("ab_dl2").addEventListener("click", () => exportChartPng("ab_chart2", null, "asbuilt-residual.png"));
