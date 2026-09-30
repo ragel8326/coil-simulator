@@ -707,6 +707,146 @@
         animation: none !important
       }
     }
+    /* ---------- 실험 조건 (As-built) 탭 ---------- */
+    :root {
+      --ab-cmp1: #6B4FA0;
+      --ab-cmp2: #9A6512;
+      --ab-cmp3: #118C7A;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --ab-cmp1: #A48BD6;
+        --ab-cmp2: #DDAE5E;
+        --ab-cmp3: #1FA891;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      --ab-cmp1: #A48BD6;
+      --ab-cmp2: #DDAE5E;
+      --ab-cmp3: #1FA891;
+    }
+
+    /* 이 탭은 왼쪽 설계 파라미터를 쓰지 않으므로, 탭이 열려 있는 동안 레일을 숨기고 넓게 쓴다 */
+    .layout.ab-wide {
+      grid-template-columns: minmax(0, 1fr)
+    }
+
+    .layout.ab-wide>.rail {
+      display: none
+    }
+
+    .ab-grid {
+      display: grid;
+      grid-template-columns: minmax(290px, 340px) minmax(0, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+      align-items: start
+    }
+
+    @media (max-width:1000px) {
+      .ab-grid {
+        grid-template-columns: minmax(0, 1fr)
+      }
+    }
+
+    .ab-assume {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-weight: 500;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--warn-bg);
+      color: var(--warn);
+      margin-left: 4px;
+      letter-spacing: 0;
+      white-space: nowrap
+    }
+
+    .ab-derived {
+      margin-top: 9px;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.65;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums
+    }
+
+    .ab-derived b {
+      color: var(--ink-2);
+      font-weight: 500
+    }
+
+    .ab-derived .bad,
+    .note.ab-err {
+      color: var(--bad)
+    }
+
+    .ab-counts {
+      font-size: 10px;
+      word-break: break-word
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: var(--accent)
+    }
+
+    #tab-asbuilt input:disabled,
+    #tab-asbuilt .seg button:disabled {
+      opacity: .45;
+      cursor: not-allowed
+    }
+
+    .metric .ab-sub {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 2px;
+      font-family: var(--mono)
+    }
+
+    .ab-iest {
+      border-top: 1px solid var(--line-soft)
+    }
+
+    .ab-iest-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap
+    }
+
+    .ab-iest .ab-k {
+      font-size: 11px;
+      color: var(--muted)
+    }
+
+    .ab-iest .ab-v {
+      font-family: var(--mono);
+      font-size: 17px;
+      font-weight: 500;
+      margin: 3px 0;
+      font-variant-numeric: tabular-nums
+    }
+
+    .ab-iest .ab-v span {
+      font-size: 12px;
+      color: var(--ink-2);
+      font-weight: 400
+    }
+
+    .ab-flag {
+      display: inline-block;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: var(--warn-bg);
+      color: var(--warn)
+    }
+
   </style>
 </head>
 
@@ -823,6 +963,7 @@
           <button role="tab" aria-selected="false" data-tab="opt">Optimize</button>
           <button role="tab" aria-selected="false" data-tab="sens">Sensitivity &amp; Tolerance</button>
           <button role="tab" aria-selected="false" data-tab="data">Measurements</button>
+          <button role="tab" aria-selected="false" data-tab="asbuilt">실험 조건 (As-built)</button>
         </div>
 
         <!-- ---- 계산 탭 ---- -->
@@ -1076,6 +1217,151 @@
               </div>
               <p class="note" id="fitnote" style="margin-top:12px">Not fitted yet. Enter measurement data and click
                 &ldquo;Compute&rdquo; first.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---- 실험 조건 (As-built) 탭 ---- -->
+        <section id="tab-asbuilt" hidden>
+          <div class="panel" style="border-top-left-radius:0;border-top-right-radius:0;border-top:0">
+            <div class="panel-body">
+              <h3 class="sec">실험 조건 (As-built) &mdash; 9/29 실험 그대로 계산해서 실측과 겹쳐 보기</h3>
+              <p class="secnote" style="max-width:none">좌표계가 다른 탭과 다릅니다. <b>x = 0</b> 은 코일1 플랜지 중 코일2를 향한 면의
+                <b>바깥면</b>, <b>x = G</b> 는 코일2 플랜지 중 코일1을 향한 면의 바깥면이고 +x 는 코일1 → 코일2 방향입니다 (가우스미터가 코일
+                안으로 못 들어가서 두 코일 사이에서만 측정). 이 탭은 아래 입력값만 쓰며, 다른 탭의 설계 파라미터는 쓰지 않습니다.
+                <span class="ab-assume">가정값</span> 표시가 붙은 항목은 실측하지 않은 값입니다.</p>
+            </div>
+          </div>
+
+          <div class="ab-grid">
+            <!-- 입력 -->
+            <div class="panel ab-inputs">
+              <h2>실험 조건 입력</h2>
+              <div class="panel-body">
+                <div class="grp">
+                  <div class="grp-h"><b><span class="swatch" style="background:var(--s-model)"></span>코일 1</b></div>
+                  <div class="fields">
+                    <div class="f"><label for="ab_R1b">보빈 반지름 R1b (mm)</label><input type="number" id="ab_R1b" value="45" step="0.1" min="1"></div>
+                    <div class="f"><label for="ab_W1">감기 폭 W1 (mm)</label><input type="number" id="ab_W1" value="20" step="0.5" min="0.1"></div>
+                    <div class="f"><label for="ab_t">플랜지 두께 t (mm)</label><input type="number" id="ab_t" value="4" step="0.1" min="0"></div>
+                    <div class="f"><label for="ab_N1">총 턴수 N1</label><input type="number" id="ab_N1" value="222" step="1" min="1"></div>
+                    <div class="f"><label for="ab_m1">한 층 턴수 m1 (칸 수)</label><input type="number" id="ab_m1" value="31" step="1" min="1"></div>
+                    <div class="f full"><label for="ab_p1">층 하나 두께 p1 = <b id="ab_p1v">0.60</b> mm <span class="ab-assume">가정값</span></label>
+                      <input type="range" id="ab_p1" min="0.5" max="1.0" step="0.05" value="0.6"></div>
+                    <div class="f full"><label>층 분포 <span class="ab-assume">가정값</span></label>
+                      <div class="seg" id="ab_mode"><button type="button" data-v="uniform" aria-pressed="true">균일</button><button type="button" data-v="skew" aria-pressed="false">한쪽 쏠림</button></div>
+                    </div>
+                    <div class="f"><label for="ab_a">바깥쪽 끝 칸 층수 a</label><input type="number" id="ab_a" value="4" step="1" min="0"></div>
+                    <div class="f"><label for="ab_b">두꺼운 쪽 끝 칸 층수 b</label><input type="number" id="ab_b" value="10" step="1" min="0"></div>
+                    <div class="f full"><label>두꺼운 쪽</label>
+                      <div class="seg" id="ab_side"><button type="button" data-v="coil2" aria-pressed="true">코일2쪽 (관찰됨)</button><button type="button" data-v="outer" aria-pressed="false">바깥쪽</button></div>
+                    </div>
+                  </div>
+                  <div class="ab-derived" id="ab_dv1"></div>
+                </div>
+
+                <div class="grp">
+                  <div class="grp-h"><b><span class="swatch" style="background:var(--s-thin)"></span>코일 2</b></div>
+                  <div class="fields">
+                    <div class="f"><label for="ab_R2b">보빈 반지름 R2b (mm)</label><input type="number" id="ab_R2b" value="22" step="0.1" min="1"></div>
+                    <div class="f"><label for="ab_W2">감기 폭 W2 (mm)</label><input type="number" id="ab_W2" value="10" step="0.5" min="0.1"></div>
+                    <div class="f"><label for="ab_N2">턴수 N2 (1층)</label><input type="number" id="ab_N2" value="11" step="1" min="0"></div>
+                    <div class="f"><label for="ab_dw">선경 dw (mm)</label><input type="number" id="ab_dw" value="0.5" step="0.05" min="0.05"></div>
+                    <div class="f full"><label for="ab_place">턴 위치 (보빈 안) <span class="ab-assume">가정값</span></label>
+                      <select id="ab_place">
+                        <option value="near" selected>코일1 쪽 플랜지에 붙임</option>
+                        <option value="center">가운데</option>
+                        <option value="far">먼 쪽 플랜지에 붙임</option>
+                      </select></div>
+                    <div class="f full"><label>감는 방향 (코일1 기준)</label>
+                      <div class="seg" id="ab_dir2"><button type="button" data-v="1" aria-pressed="true">같은 방향</button><button type="button" data-v="-1" aria-pressed="false">반대</button></div>
+                    </div>
+                  </div>
+                  <div class="ab-derived" id="ab_dv2"></div>
+                </div>
+
+                <div class="grp">
+                  <div class="grp-h"><b>배치 · 전류 · 프로브</b></div>
+                  <div class="fields">
+                    <div class="f full"><label for="ab_G">플랜지 바깥면 사이 거리 G (mm)</label><input type="number" id="ab_G" value="40" step="0.5" min="1"></div>
+                    <div class="f"><label for="ab_I">전류 I (A)</label><input type="number" id="ab_I" value="1" step="0.01" min="0"></div>
+                    <div class="f"><label for="ab_dI">전류 불확도 ±ΔI (A)</label><input type="number" id="ab_dI" value="0.1" step="0.01" min="0"></div>
+                    <div class="f full"><label for="ab_rho">프로브 축 이탈 ρ = <b id="ab_rhov">0</b> mm</label>
+                      <input type="range" id="ab_rho" min="0" max="15" step="0.5" value="0"></div>
+                  </div>
+                  <p class="note" style="margin:9px 0 0">목표 직선: x = 0 에서 25 Oe → x = G 에서 10 Oe. ΔI 띠는 실험 중 발열로 전류가
+                    흔들린 범위를 보여주는 용도입니다. ρ &gt; 0 이면 타원적분 식(H_pack_offaxis)의 축 방향 성분 Hz 를 씁니다.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="ab-main">
+              <!-- 그래프 1 -->
+              <div class="panel">
+                <h2>자기장 H(x) &mdash; 모델 vs 실측</h2>
+                <div class="chartbox">
+                  <svg class="chart" id="ab_chart1" viewBox="0 0 760 370" role="img" aria-label="실험 조건 모델과 실측 자기장"></svg>
+                  <div class="tip" id="ab_tip"></div>
+                </div>
+                <div class="legend" id="ab_legend1"></div>
+                <div class="row" style="padding:0 14px 12px">
+                  <label class="row" style="gap:6px"><input type="checkbox" id="ab_showparts"> <span>코일1 / 코일2 기여</span></label>
+                  <label class="row" style="gap:6px"><input type="checkbox" id="ab_cmp"> <span>층 분포 비교 (균일 · 쏠림 4→10 · 쏠림 2→12)</span></label>
+                  <button class="act ghost" type="button" id="ab_dl1">그래프 PNG</button>
+                </div>
+              </div>
+
+              <!-- 지표 -->
+              <div class="panel" style="margin-top:14px">
+                <h2>지표 (Oe)</h2>
+                <div class="metrics" id="ab_metrics" style="border-top:0"></div>
+                <div class="panel-body ab-iest" id="ab_iestbox"></div>
+              </div>
+
+              <!-- 그래프 2 -->
+              <div class="panel" style="margin-top:14px">
+                <h2>잔차 &mdash; 실측 &minus; 모델 (현재 I)</h2>
+                <div class="chartbox">
+                  <svg class="chart" id="ab_chart2" viewBox="0 0 760 200" role="img" aria-label="실측 빼기 모델 잔차"></svg>
+                </div>
+                <div class="row" style="padding:0 14px 12px">
+                  <button class="act ghost" type="button" id="ab_dl2">그래프 PNG</button>
+                </div>
+              </div>
+
+              <!-- 그래프 3 -->
+              <div class="panel" style="margin-top:14px">
+                <h2>직선 이탈 &mdash; 양 끝값(x=0, x=G)을 이은 직선 대비</h2>
+                <div class="chartbox">
+                  <svg class="chart" id="ab_chart3" viewBox="0 0 760 220" role="img" aria-label="양 끝을 이은 직선 대비 이탈"></svg>
+                </div>
+                <div class="legend" id="ab_legend3"></div>
+                <div class="panel-body" style="border-top:1px solid var(--line-soft);padding-top:10px">
+                  <p class="note" style="margin:0 0 10px">각 곡선에서 자기 자신의 양 끝값을 이은 직선을 빼서, 전류 크기와 상관없이 &ldquo;휘어진 모양&rdquo;만
+                    비교하려는 그래프입니다. (단, 휨의 깊이는 전류에 비례하므로 측정 데이터가 있으면 추정 I 로 그린 모델도 점선으로 같이 그립니다.)</p>
+                  <button class="act ghost" type="button" id="ab_dl3">그래프 PNG</button>
+                </div>
+              </div>
+
+              <!-- 측정 데이터 -->
+              <div class="panel" style="margin-top:14px">
+                <h2>측정 데이터 (CSV)</h2>
+                <div class="panel-body">
+                  <p class="secnote" style="max-width:none">팀 대시보드에서 내보낸 CSV: 열 이름 <code>x_mm, reading_1, reading_2, reading_3</code>
+                    (나머지 열은 무시). 위치별 평균·표준편차(n&minus;1)는 reading 열로 다시 계산하고, 행 순서를 측정 순서(P1, P2, …)로 씁니다.</p>
+                  <textarea id="ab_raw" rows="7" spellcheck="false" placeholder="x_mm,reading_1,reading_2,reading_3&#10;0,25.2,25.2,25.4&#10;…"></textarea>
+                  <div class="row" style="margin-top:11px">
+                    <button class="act" type="button" id="ab_example">9/29 실측(222턴, G=40mm)</button>
+                    <button class="act ghost" type="button" id="ab_load" title="CSV / TSV / TXT">CSV 불러오기</button>
+                    <input type="file" id="ab_file" accept=".csv,.tsv,.txt" hidden>
+                    <button class="act ghost" type="button" id="ab_clear">지우기</button>
+                    <span class="note" id="ab_datanote">데이터 없음 &mdash; 예시 버튼을 누르거나 CSV를 붙여넣으세요.</span>
+                  </div>
+                  <div class="scroll" style="margin-top:14px">
+                    <table class="t" id="ab_table"></table>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -1611,6 +1897,200 @@
 
 
     /* ==== COIL-CORE-END ==== */
+
+    /* ==== ASBUILT-CORE-START ==== */
+    /* ========================================================================
+       실험 조건(As-built) 탭 — DOM 없는 순수 함수.
+       runner/asbuilt.mjs 가 이 구간을 COIL-CORE 와 함께 떼어내 테스트한다.
+       COIL-CORE 의 H_pack / H_pack_offaxis 를 그대로 호출하고, 턴 배열 {rs, xs}(m)만 여기서 만든다.
+
+       좌표계 (입력·출력은 모두 mm):
+         x = 0 : 코일1 플랜지 중 코일2를 향한 면의 바깥면
+         x = G : 코일2 플랜지 중 코일1을 향한 면의 바깥면
+         +x    : 코일1 → 코일2
+       ===================================================================== */
+    const AB_DEFAULTS = Object.freeze({
+      // 코일1
+      R1b: 45, W1: 20, t: 4, N1: 222, m1: 31, p1: 0.6,
+      layerMode: "uniform", a: 4, b: 10, thickSide: "coil2",
+      // 코일2
+      R2b: 22, W2: 10, N2: 11, dw: 0.5, c2Place: "near", dir2: 1,
+      // 배치·전류·프로브
+      G: 40, I: 1, dI: 0.1, rho: 0,
+      // 목표 직선 (x=0 → x=G)
+      h1: 25, h2: 10,
+    });
+
+    /* 남는/모자란 턴을 나눠 줄 칸 순서: i = (k·7) mod m.
+       m 이 7의 배수이면 이 수열이 일부 칸만 돌기 때문에, 이미 나온 칸이면 다음 빈 칸으로 넘긴다
+       (m = 31 처럼 7과 서로소이면 원래 수열 0, 7, 14, 21, 28, 4, … 과 똑같다). */
+    function abSpreadOrder(m) {
+      const seen = new Array(m).fill(false), order = [];
+      for (let k = 0; order.length < m; k++) {
+        let i = (k * 7) % m;
+        while (seen[i]) i = (i + 1) % m;
+        seen[i] = true; order.push(i);
+      }
+      return order;
+    }
+
+    /* 코일1 칸(축 방향 column)별 층수. 칸 0 = 바깥쪽, 칸 m1−1 = 코일2 쪽. 합은 항상 N1. */
+    function abLayerCounts(g) {
+      const m = Math.max(1, Math.round(g.m1)), N = Math.max(0, Math.round(g.N1));
+      const order = abSpreadOrder(m);
+      const L = new Array(m).fill(0);
+      if (g.layerMode === "skew") {
+        for (let i = 0; i < m; i++) {
+          const u = m === 1 ? 1 : i / (m - 1);
+          const w = g.thickSide === "outer" ? 1 - u : u;   // w=1 인 칸이 b층
+          L[i] = Math.max(0, Math.round(g.a + (g.b - g.a) * w));
+        }
+      } else {
+        L.fill(Math.floor(N / m));
+      }
+      let s = L.reduce((p, q) => p + q, 0);
+      for (let k = 0; s !== N; k++) {
+        const i = order[k % m];
+        if (s < N) { L[i]++; s++; }
+        else if (L[i] > 0) { L[i]--; s--; }
+      }
+      return L;
+    }
+
+    /* 코일1 턴: 칸 i, 층 j → r = R1b + p1·(j+0.5),  x = −(t+W1) + (W1/m1)·(i+0.5)  [mm] */
+    function abCoil1Turns(g) {
+      const counts = abLayerCounts(g), m = counts.length, cw = g.W1 / m;
+      const rs = [], xs = [];
+      for (let i = 0; i < m; i++) {
+        const x = -(g.t + g.W1) + cw * (i + 0.5);
+        for (let j = 0; j < counts[i]; j++) { rs.push((g.R1b + g.p1 * (j + 0.5)) / 1000); xs.push(x / 1000); }
+      }
+      return { rs: Float64Array.from(rs), xs: Float64Array.from(xs), N: rs.length, counts };
+    }
+
+    /* 코일2 첫 턴의 왼쪽 끝 [mm] — 보빈 안 턴 묶음의 위치 */
+    function abCoil2Start(g) {
+      const lo = g.G + g.t, span = g.N2 * g.dw;
+      if (g.c2Place === "center") return lo + (g.W2 - span) / 2;
+      if (g.c2Place === "far") return lo + g.W2 - span;
+      return lo;   // "near": 코일1 쪽 플랜지에 붙임
+    }
+    /* 코일2 턴: 한 층, 반경 R2b + dw/2, 턴 k 의 x = start + dw·(k+0.5)  [mm] */
+    function abCoil2Turns(g) {
+      const n = Math.max(0, Math.round(g.N2)), r = (g.R2b + g.dw / 2) / 1000, x0 = abCoil2Start(g);
+      const rs = [], xs = [];
+      for (let k = 0; k < n; k++) { rs.push(r); xs.push((x0 + g.dw * (k + 0.5)) / 1000); }
+      return { rs: Float64Array.from(rs), xs: Float64Array.from(xs), N: n };
+    }
+
+    /* 턴 배열을 만들고, I = 1 A 기준 H [Oe] 를 돌려주는 함수를 만든다 (H 는 I 에 정비례하므로
+       다른 전류는 곱하기만 하면 된다). ρ = 0 이면 H_pack, 아니면 H_pack_offaxis 의 Hz. */
+    function abModel(g) {
+      const T1 = abCoil1Turns(g), T2 = abCoil2Turns(g);
+      const dir2 = g.dir2 < 0 ? -1 : 1, rho = Math.max(0, g.rho || 0) / 1000;
+      const one = (x, T, dir) => rho === 0 ? H_pack(x, T, dir, 1) : H_pack_offaxis(x, rho, T, dir, 1).Hz;
+      const unit = xmm => {
+        const x = xmm / 1000, c1 = one(x, T1, 1) / OE, c2 = one(x, T2, dir2) / OE;
+        return { c1, c2, total: c1 + c2 };
+      };
+      return { T1, T2, dir2, unit };
+    }
+
+    /* 팀 대시보드 CSV 읽기: x_mm, reading_1, reading_2, … 열만 쓰고 나머지 열(mean_Oe 등)은 무시.
+       행 순서 = 측정 순서(P1, P2, …). 평균·표준편차(n−1)는 reading 열로 다시 계산한다. */
+    function abParseCSV(text) {
+      const lines = String(text).replace(/^﻿/, "").split(/\r?\n/).filter(l => l.trim() !== "");
+      if (!lines.length) return { points: [], readingCols: [], skipped: 0 };
+      const sep = lines[0].includes("\t") ? "\t" : (lines[0].includes(",") ? "," : ";");
+      const split = l => l.split(sep).map(c => c.trim().replace(/^"(.*)"$/, "$1").trim());
+      const head = split(lines[0]).map(h => h.toLowerCase());
+      const xi = head.indexOf("x_mm");
+      const ri = [];
+      head.forEach((h, i) => { if (/^reading_\d+$/.test(h)) ri.push(i); });
+      if (xi < 0) throw new Error("x_mm 열이 없습니다 (첫 줄 머리글에 x_mm, reading_1, reading_2, … 가 있어야 함)");
+      if (!ri.length) throw new Error("reading_1, reading_2 … 열이 없습니다");
+      const points = []; let skipped = 0;
+      for (let li = 1; li < lines.length; li++) {
+        const c = split(lines[li]);
+        const x = parseFloat(c[xi]);
+        const rd = ri.map(i => parseFloat(c[i])).filter(v => isFinite(v));
+        if (!isFinite(x) || !rd.length) { skipped++; continue; }
+        const n = rd.length, mean = rd.reduce((p, q) => p + q, 0) / n;
+        const sd = n > 1 ? Math.sqrt(rd.reduce((p, q) => p + (q - mean) * (q - mean), 0) / (n - 1)) : 0;
+        points.push({ order: points.length + 1, x, readings: rd, n, mean, sd });
+      }
+      return { points, readingCols: ri.map(i => head[i]), skipped };
+    }
+
+    /* 곡선 값 ys 에서 두 끝값 (xa, ya)–(xb, yb) 을 이은 직선을 뺀 값 = "직선 이탈" */
+    function abChordDev(xs, ys, xa, ya, xb, yb) {
+      return ys.map((y, i) => y - (ya + (yb - ya) * (xs[i] - xa) / (xb - xa)));
+    }
+
+    /* 실측의 x=0, x=G 값. 그 위치에서 잰 점이 없으면 가장 왼쪽/오른쪽 점으로 대신하고 approx 표시. */
+    function abMeasEnds(points, G) {
+      const at = x0 => points.find(p => Math.abs(p.x - x0) < 1e-9);
+      let a = at(0), b = at(G), approx = false;
+      if (!a || !b) {
+        const s = points.slice().sort((p, q) => p.x - q.x);
+        a = a || s[0]; b = b || s[s.length - 1]; approx = true;
+      }
+      return { xa: a.x, ya: a.mean, xb: b.x, yb: b.mean, approx };
+    }
+
+    /* 지표 계산. model = abModel(g). points = abParseCSV(..).points (없으면 빈 배열).
+       nGrid 는 모델 직선 이탈 최소값을 찾을 때 [0, G] 를 나누는 점 수. */
+    function abAnalyze(g, model, points, nGrid = 401) {
+      const I = g.I, G = g.G;
+      const target = x => g.h1 + (g.h2 - g.h1) * x / G;
+      const u0 = model.unit(0).total, uG = model.unit(G).total;
+      // 모델 직선 이탈 (I=1 기준 모양; 전류 I 에서는 I 배)
+      const gx = [], gu = [];
+      for (let i = 0; i < nGrid; i++) { const x = G * i / (nGrid - 1); gx.push(x); gu.push(model.unit(x).total); }
+      const gdev = abChordDev(gx, gu, 0, u0, G, uG);
+      let km = 0; gdev.forEach((v, i) => { if (v < gdev[km]) km = i; });
+      const out = {
+        I, u0, uG,
+        modelSagUnit: gdev[km], modelSagAt: gx[km],
+        modelSag: I * gdev[km],
+      };
+      if (!points.length) return out;
+
+      const xs = points.map(p => p.x), meas = points.map(p => p.mean);
+      const hu = xs.map(x => model.unit(x).total);
+      // 실측 vs 목표 ([0, G] 안의 점만)
+      let tMax = 0, tSse = 0, tN = 0;
+      points.forEach(p => {
+        if (p.x < 0 || p.x > G) return;
+        const e = p.mean - target(p.x);
+        tMax = Math.max(tMax, Math.abs(e)); tSse += e * e; tN++;
+      });
+      // 실측 vs 모델 (현재 I)
+      const resid = meas.map((m, i) => m - I * hu[i]);
+      const rms = Math.sqrt(resid.reduce((p, q) => p + q * q, 0) / resid.length);
+      const meanResid = resid.reduce((p, q) => p + q, 0) / resid.length;
+      // 전류 추정: I = Σ(H_model·H_meas) / Σ(H_model²), H_model 은 I=1A 기준
+      let sxy = 0, sxx = 0;
+      hu.forEach((h, i) => { sxy += h * meas[i]; sxx += h * h; });
+      const Iest = sxx > 0 ? sxy / sxx : NaN;
+      const rmsEst = Math.sqrt(meas.reduce((p, m, i) => p + (m - Iest * hu[i]) ** 2, 0) / meas.length);
+      // 직선 이탈
+      const ends = abMeasEnds(points, G);
+      const measDev = abChordDev(xs, meas, ends.xa, ends.ya, ends.xb, ends.yb);
+      const modelDevUnit = abChordDev(xs, hu, 0, u0, G, uG);
+      let jm = 0; measDev.forEach((v, i) => { if (v < measDev[jm]) jm = i; });
+
+      return Object.assign(out, {
+        xs, meas, hu, resid, rms, meanResid,
+        targetMax: tN ? tMax : NaN, targetRmse: tN ? Math.sqrt(tSse / tN) : NaN,
+        Iest, rmsEst,
+        measEnds: ends, measDev, measSag: measDev[jm], measSagAt: xs[jm],
+        modelDev: modelDevUnit.map(v => I * v),
+        modelDevEst: modelDevUnit.map(v => Iest * v),
+        modelSagEst: Iest * gdev[km],
+      });
+    }
+    /* ==== ASBUILT-CORE-END ==== */
 
     /* ========================================================================
        상태 읽기
@@ -2823,8 +3303,10 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
     document.querySelectorAll(".tabs button").forEach(b => {
       b.addEventListener("click", () => {
         document.querySelectorAll(".tabs button").forEach(o => o.setAttribute("aria-selected", (o === b) + ""));
-        ["calc", "opt", "sens", "data"].forEach(t => $("tab-" + t).hidden = (t !== b.dataset.tab));
+        ["calc", "opt", "sens", "data", "asbuilt"].forEach(t => $("tab-" + t).hidden = (t !== b.dataset.tab));
+        document.querySelector(".layout").classList.toggle("ab-wide", b.dataset.tab === "asbuilt");
         if (b.dataset.tab === "sens") sensitivity();
+        if (b.dataset.tab === "asbuilt") abRender();
       });
     });
     $("runopt").addEventListener("click", () => { $("optlog").textContent = "Computing…"; setTimeout(runOptimize, 30); });
@@ -2876,6 +3358,375 @@ Coil 1 alone, center field ${fmt(E.h1solo, 2)} Oe`;
       document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
       render(); if (!$("tab-sens").hidden) sensitivity();
     });
+
+    /* ========================================================================
+       실험 조건 (As-built) 탭 — 화면
+       계산은 모두 ASBUILT-CORE 의 순수 함수(abModel, abAnalyze, …)로 하고, 여기서는
+       입력 읽기 · 그리기만 한다. 다른 탭의 상태(S, E, measured …)는 읽지도 쓰지도 않는다.
+       ===================================================================== */
+    const AB_EXAMPLE_0929 = `x_mm,reading_1,reading_2,reading_3
+0,25.2,25.2,25.4
+5,22.9,22.9,23.3
+10,20.4,20.5,20.5
+15,18.1,18.1,17.7
+20,15.7,16,15.5
+25,13.6,13.5,13.8
+30,12.2,12.4,12.3
+35,11.5,11.8,11.7
+40,10.3,10.5,10.2`;
+    const abSeg = { ab_mode: "uniform", ab_side: "coil2", ab_dir2: "1" };
+    let abPoints = [];      // abParseCSV(..).points — 행 순서 = 측정 순서
+    let abLast = null;      // 마지막 계산 결과 (추정 I 적용 버튼용)
+
+    function abSetSeg(id, v) {
+      abSeg[id] = v;
+      $(id).querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", (b.dataset.v === v) + ""));
+    }
+    function abRead() {
+      const D = AB_DEFAULTS;
+      const num = (id, def) => { const v = parseFloat($(id).value); return isFinite(v) ? v : def; };
+      const int = (id, def, min) => Math.max(min, Math.round(num(id, def)));
+      return {
+        R1b: Math.max(0.1, num("ab_R1b", D.R1b)), W1: Math.max(0.01, num("ab_W1", D.W1)), t: Math.max(0, num("ab_t", D.t)),
+        N1: int("ab_N1", D.N1, 1), m1: int("ab_m1", D.m1, 1), p1: num("ab_p1", D.p1),
+        layerMode: abSeg.ab_mode, a: int("ab_a", D.a, 0), b: int("ab_b", D.b, 0), thickSide: abSeg.ab_side,
+        R2b: Math.max(0.1, num("ab_R2b", D.R2b)), W2: Math.max(0.01, num("ab_W2", D.W2)),
+        N2: int("ab_N2", D.N2, 0), dw: Math.max(0.01, num("ab_dw", D.dw)),
+        c2Place: $("ab_place").value, dir2: +abSeg.ab_dir2,
+        G: Math.max(1, num("ab_G", D.G)), I: Math.max(0, num("ab_I", D.I)), dI: Math.max(0, num("ab_dI", D.dI)),
+        rho: Math.max(0, num("ab_rho", 0)), h1: D.h1, h2: D.h2,
+      };
+    }
+
+    /* 차트 틀: 격자 + y 눈금 + x 눈금. X/Y 변환을 돌려준다. */
+    function abFrame(svg, W, Hh, pad, x0, x1, lo, hi, yDec, yTitle) {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const pw = W - pad.l - pad.r, ph = Hh - pad.t - pad.b;
+      const X = v => pad.l + (v - x0) / (x1 - x0) * pw;
+      const Y = v => pad.t + (1 - (v - lo) / (hi - lo)) * ph;
+      const cLine = css("--line-soft"), cMuted = css("--muted");
+      niceTicks(lo, hi, 5).forEach(v => {
+        svg.appendChild(el("line", { x1: pad.l, x2: pad.l + pw, y1: Y(v), y2: Y(v), stroke: cLine, "stroke-width": 1 }));
+        const t = el("text", { x: pad.l - 8, y: Y(v) + 3.5, "text-anchor": "end" }); t.textContent = v.toFixed(yDec); svg.appendChild(t);
+      });
+      niceTicks(x0, x1, 10).forEach(v => {
+        const px = X(v); if (px < pad.l - 1 || px > pad.l + pw + 1) return;
+        svg.appendChild(el("line", { x1: px, x2: px, y1: pad.t + ph, y2: pad.t + ph + 4, stroke: cMuted, "stroke-width": 1 }));
+        const t = el("text", { x: px, y: pad.t + ph + 16, "text-anchor": "middle" }); t.textContent = v; svg.appendChild(t);
+      });
+      svg.appendChild(el("line", { x1: pad.l, x2: pad.l + pw, y1: pad.t + ph, y2: pad.t + ph, stroke: cMuted, "stroke-width": 1 }));
+      const at = el("text", {
+        x: 14, y: pad.t + ph / 2, "text-anchor": "middle", class: "axis-title",
+        transform: `rotate(-90 14 ${pad.t + ph / 2})`
+      });
+      at.textContent = yTitle; svg.appendChild(at);
+      return { X, Y, pw, ph };
+    }
+    function abPath(svg, xs, ys, X, Y, attrs) {
+      let d = ""; xs.forEach((x, i) => { d += (i ? "L" : "M") + X(x).toFixed(2) + " " + Y(ys[i]).toFixed(2); });
+      svg.appendChild(el("path", Object.assign({ d, fill: "none", "stroke-linejoin": "round" }, attrs)));
+    }
+    /* 실측 점 + 오차막대 + 측정 순서 번호 */
+    function abDrawPoints(svg, pts, ys, sds, X, Y, col, withLabel) {
+      const cSurf = css("--surface");
+      pts.forEach((p, i) => {
+        const px = X(p.x), py = Y(ys[i]), sd = sds[i];
+        if (sd > 0) {
+          svg.appendChild(el("line", { x1: px, x2: px, y1: Y(ys[i] - sd), y2: Y(ys[i] + sd), stroke: col, "stroke-width": 1.4 }));
+          [-1, 1].forEach(s => svg.appendChild(el("line", {
+            x1: px - 3.5, x2: px + 3.5, y1: Y(ys[i] + s * sd), y2: Y(ys[i] + s * sd), stroke: col, "stroke-width": 1.4
+          })));
+        }
+        svg.appendChild(el("circle", { cx: px, cy: py, r: 3.6, fill: col, stroke: cSurf, "stroke-width": 1.8 }));
+        if (withLabel) {
+          const t = el("text", { x: px + 6, y: py - 6, style: `fill:${col};font-size:9.5px` });
+          t.textContent = "P" + p.order; svg.appendChild(t);
+        }
+      });
+    }
+    function abLegend(id, items) {
+      $(id).innerHTML = items.map(([l, c, k]) =>
+        `<span><i style="border-top-color:${c};border-top-style:${k === "dash" ? "dashed" : k === "dot" ? "dotted" : "solid"};${k === "band" ? `border:0;height:9px;background:${c};opacity:.28;border-radius:2px;vertical-align:-1px` : ""}"></i>${l}</span>`
+      ).join("");
+    }
+    function abEmptyNote(svg, W, y, text) {
+      const t = el("text", { x: W / 2, y, "text-anchor": "middle" }); t.textContent = text; svg.appendChild(t);
+    }
+
+    /* 그래프 1 — H(x) */
+    function abDrawField(g, A, xs, u1, u2, cmp) {
+      const svg = $("ab_chart1");
+      const W = 760, Hh = 370, pad = { l: 54, r: 16, t: 14, b: 78 };
+      const x0 = -5, x1 = g.G + 5, I = g.I;
+      const tot = xs.map((_, i) => u1[i] + u2[i]);
+      const showParts = $("ab_showparts").checked;
+      const vals = [...tot.map(u => (I + g.dI) * u), ...tot.map(u => Math.max(0, I - g.dI) * u), g.h1, g.h2];
+      if (showParts) vals.push(...u1.map(u => I * u), ...u2.map(u => I * u));
+      if (cmp) cmp.forEach(c => vals.push(...c.ys));
+      abPoints.forEach(p => vals.push(p.mean + p.sd, p.mean - p.sd));
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      const pY = Math.max(0.5, (hi - lo) * 0.08); lo -= pY; hi += pY;
+      const { X, Y, pw, ph } = abFrame(svg, W, Hh, pad, x0, x1, lo, hi, 0, "자기장 H  (Oe)");
+      const cModel = css("--s-model"), cThin = css("--s-thin"), cMeas = css("--s-meas"), cInk2 = css("--ink-2"), cMuted = css("--muted");
+
+      // 측정 구간 음영 + x=0, x=G 표시
+      svg.appendChild(el("rect", { x: X(0), y: pad.t, width: X(g.G) - X(0), height: ph, fill: css("--accent"), opacity: .05 }));
+      [[0, "x=0"], [g.G, "x=G"]].forEach(([xv, lab]) => {
+        svg.appendChild(el("line", {
+          x1: X(xv), x2: X(xv), y1: pad.t, y2: pad.t + ph, stroke: cMuted, "stroke-width": 1, "stroke-dasharray": "2 4", opacity: .6
+        }));
+        const t = el("text", { x: X(xv) + 4, y: pad.t + 11 }); t.textContent = lab; svg.appendChild(t);
+      });
+
+      // 코일 권선 영역 · 플랜지 막대 (x축 아래)
+      const t = g.t, by = pad.t + ph + 24, bh = 9;
+      const segs = [
+        [-(2 * t + g.W1), -(t + g.W1), .55], [-(t + g.W1), -t, .22], [-t, 0, .55],
+        [g.G, g.G + t, .55], [g.G + t, g.G + t + g.W2, .22], [g.G + t + g.W2, g.G + 2 * t + g.W2, .55],
+      ];
+      segs.forEach(([a, b, op]) => {
+        const ca = Math.max(a, x0), cb = Math.min(b, x1); if (!(cb > ca)) return;
+        svg.appendChild(el("rect", { x: X(ca), y: by, width: X(cb) - X(ca), height: bh, fill: cMuted, opacity: op }));
+      });
+      const f1 = v => fmt(v, 1).replace(/\.0$/, "").replace("-", "−");
+      let lt = el("text", { x: pad.l, y: by + bh + 13 });
+      lt.textContent = `◂ 코일1 권선 ${f1(-(t + g.W1))}~${f1(-t)} · 플랜지 ${f1(-t)}~0`; svg.appendChild(lt);
+      lt = el("text", { x: pad.l + pw, y: by + bh + 13, "text-anchor": "end" });
+      lt.textContent = `코일2 플랜지 ${f1(g.G)}~${f1(g.G + t)} · 권선 ${f1(g.G + t)}~${f1(g.G + t + g.W2)} ▸`; svg.appendChild(lt);
+      lt = el("text", { x: pad.l + pw / 2, y: Hh - 4, "text-anchor": "middle", class: "axis-title" });
+      lt.textContent = "x (mm) — 0 = 코일1 플랜지 바깥면, G = 코일2 플랜지 바깥면"; svg.appendChild(lt);
+
+      // ±ΔI 띠
+      if (g.dI > 0) {
+        let d = "";
+        xs.forEach((x, i) => { d += (i ? "L" : "M") + X(x) + " " + Y((I + g.dI) * tot[i]); });
+        for (let i = xs.length - 1; i >= 0; i--) d += "L" + X(xs[i]) + " " + Y(Math.max(0, I - g.dI) * tot[i]);
+        svg.appendChild(el("path", { d: d + "Z", fill: cModel, opacity: .13, stroke: "none" }));
+      }
+      // 코일별 기여
+      if (showParts) {
+        abPath(svg, xs, u1.map(u => I * u), X, Y, { stroke: cModel, "stroke-width": 1.3, "stroke-dasharray": "1 3", opacity: .8 });
+        abPath(svg, xs, u2.map(u => I * u), X, Y, { stroke: cThin, "stroke-width": 1.3, "stroke-dasharray": "1 3", opacity: .9 });
+      }
+      // 층 분포 비교
+      const cmpCols = [css("--ab-cmp1"), css("--ab-cmp2"), css("--ab-cmp3")];
+      if (cmp) cmp.forEach((c, k) => abPath(svg, xs, c.ys, X, Y, { stroke: cmpCols[k], "stroke-width": 1.4, opacity: .9 }));
+      // 목표 직선
+      svg.appendChild(el("line", {
+        x1: X(0), y1: Y(g.h1), x2: X(g.G), y2: Y(g.h2), stroke: cInk2, "stroke-width": 1.5, "stroke-dasharray": "6 4", opacity: .8
+      }));
+      // 모델 (현재 I)
+      abPath(svg, xs, tot.map(u => I * u), X, Y, { stroke: cModel, "stroke-width": 2.4, "stroke-linecap": "round" });
+      // 실측
+      abDrawPoints(svg, abPoints, abPoints.map(p => p.mean), abPoints.map(p => p.sd), X, Y, cMeas, true);
+
+      // hover
+      const ov = el("rect", { x: pad.l, y: pad.t, width: pw, height: ph, fill: "transparent", style: "cursor:crosshair" });
+      const ch = el("line", { x1: 0, x2: 0, y1: pad.t, y2: pad.t + ph, stroke: cMuted, "stroke-width": 1, opacity: 0 });
+      svg.appendChild(ch); svg.appendChild(ov);
+      const tip = $("ab_tip");
+      ov.addEventListener("mousemove", ev => {
+        const r = svg.getBoundingClientRect();
+        const sx = (ev.clientX - r.left) / r.width * W;
+        const xv = x0 + (sx - pad.l) / pw * (x1 - x0);
+        const k = clamp(Math.round((xv - x0) / (x1 - x0) * (xs.length - 1)), 0, xs.length - 1);
+        ch.setAttribute("x1", sx); ch.setAttribute("x2", sx); ch.setAttribute("opacity", ".5");
+        let txt = `x = ${fmt(xs[k], 1)} mm<br>모델 H = <b>${fmt(I * tot[k], 2)} Oe</b>`;
+        if (g.dI > 0) txt += `<br>±ΔI: ${fmt(Math.max(0, I - g.dI) * tot[k], 2)} ~ ${fmt((I + g.dI) * tot[k], 2)}`;
+        if (xs[k] >= 0 && xs[k] <= g.G) txt += `<br>목표 ${fmt(g.h1 + (g.h2 - g.h1) * xs[k] / g.G, 2)}`;
+        tip.innerHTML = txt; tip.style.opacity = 1;
+        tip.style.left = Math.max(0, Math.min(r.width - 150, sx / W * r.width + 12)) + "px";
+        tip.style.top = "8px";
+      });
+      // 숨길 때 위치도 되돌린다 — 넓은 화면에서 남은 left 값이 좁은 화면에서 가로 스크롤을 만들지 않게
+      ov.addEventListener("mouseleave", () => { tip.style.opacity = 0; tip.style.left = "0px"; ch.setAttribute("opacity", 0); });
+
+      const items = [[`모델 (I = ${fmt(I, 3)} A)`, cModel, "solid"]];
+      if (g.dI > 0) items.push([`전류 ±${fmt(g.dI, 2)} A 범위`, cModel, "band"]);
+      items.push(["목표 직선 25→10 Oe", cInk2, "dash"]);
+      if (abPoints.length) items.push(["실측 평균 ± 표준편차 (P = 측정 순서)", cMeas, "solid"]);
+      if (showParts) items.push(["코일1 기여", cModel, "dot"], ["코일2 기여", cThin, "dot"]);
+      if (cmp) cmp.forEach((c, k) => items.push([c.label, cmpCols[k], "solid"]));
+      abLegend("ab_legend1", items);
+    }
+
+    /* 그래프 2 — 잔차 (실측 − 모델, 현재 I) */
+    function abDrawResid(g, A) {
+      const svg = $("ab_chart2");
+      const W = 760, Hh = 200, pad = { l: 54, r: 16, t: 12, b: 34 };
+      const x0 = -5, x1 = g.G + 5;
+      const r = A.resid || [];
+      const m = Math.max(0.5, ...r.map((v, i) => Math.abs(v) + abPoints[i].sd)) * 1.2;
+      const { X, Y, pw, ph } = abFrame(svg, W, Hh, pad, x0, x1, -m, m, 2, "실측 − 모델 (Oe)");
+      svg.appendChild(el("line", { x1: pad.l, x2: pad.l + pw, y1: Y(0), y2: Y(0), stroke: css("--muted"), "stroke-width": 1.2 }));
+      const t = el("text", { x: pad.l + pw / 2, y: Hh - 4, "text-anchor": "middle", class: "axis-title" });
+      t.textContent = "x (mm)"; svg.appendChild(t);
+      if (!abPoints.length) { abEmptyNote(svg, W, pad.t + ph / 2 - 8, "측정 데이터를 불러오면 표시됩니다"); return; }
+      abDrawPoints(svg, abPoints, r, abPoints.map(p => p.sd), X, Y, css("--s-meas"), true);
+    }
+
+    /* 그래프 3 — 양 끝값을 이은 직선 대비 이탈 */
+    function abDrawChord(g, M, A) {
+      const svg = $("ab_chart3");
+      const W = 760, Hh = 220, pad = { l: 54, r: 16, t: 12, b: 34 };
+      const x0 = -5, x1 = g.G + 5, I = g.I;
+      const n = 161, gx = [], gu = [];
+      for (let i = 0; i < n; i++) { const x = g.G * i / (n - 1); gx.push(x); gu.push(M.unit(x).total); }
+      const devU = abChordDev(gx, gu, 0, A.u0, g.G, A.uG);
+      const has = abPoints.length > 0;
+      const vals = [0, ...devU.map(v => I * v)];
+      if (has) { vals.push(...devU.map(v => A.Iest * v)); A.measDev.forEach((v, i) => vals.push(v - abPoints[i].sd, v + abPoints[i].sd)); }
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      const p = Math.max(0.2, (hi - lo) * 0.12); lo -= p; hi += p;
+      const { X, Y, pw } = abFrame(svg, W, Hh, pad, x0, x1, lo, hi, 1, "직선 이탈 (Oe)");
+      svg.appendChild(el("line", { x1: pad.l, x2: pad.l + pw, y1: Y(0), y2: Y(0), stroke: css("--muted"), "stroke-width": 1.2 }));
+      const t = el("text", { x: pad.l + pw / 2, y: Hh - 4, "text-anchor": "middle", class: "axis-title" });
+      t.textContent = "x (mm)"; svg.appendChild(t);
+      const cModel = css("--s-model"), cMeas = css("--s-meas");
+      abPath(svg, gx, devU.map(v => I * v), X, Y, { stroke: cModel, "stroke-width": 2.2 });
+      const items = [[`모델 (I = ${fmt(I, 3)} A)`, cModel, "solid"]];
+      if (has) {
+        abPath(svg, gx, devU.map(v => A.Iest * v), X, Y, { stroke: cModel, "stroke-width": 1.5, "stroke-dasharray": "6 4", opacity: .8 });
+        abPath(svg, A.xs, A.measDev, X, Y, { stroke: cMeas, "stroke-width": 1, opacity: .5 });
+        abDrawPoints(svg, abPoints, A.measDev, abPoints.map(p => p.sd), X, Y, cMeas, true);
+        items.push([`모델 (추정 I = ${fmt(A.Iest, 3)} A, 역산값)`, cModel, "dash"]);
+        items.push([A.measEnds.approx
+          ? `실측 (끝점: x=${A.measEnds.xa}, x=${A.measEnds.xb} mm — x=0/x=G 측정점 없음)`
+          : "실측 평균 ± 표준편차", cMeas, "solid"]);
+      }
+      abLegend("ab_legend3", items);
+    }
+
+    function abMetricsHtml(g, A) {
+      const cell = (k, v, unit, sub) =>
+        `<div class="metric"><div class="k">${k}</div><div class="v">${v}<small>${unit}</small></div>${sub ? `<div class="ab-sub">${sub}</div>` : ""}</div>`;
+      const has = abPoints.length > 0;
+      const d = v => has ? fmt(v, 2) : "—";
+      $("ab_metrics").innerHTML = [
+        cell("실측 vs 목표 · 최대편차", d(A.targetMax), "Oe", "[0, G] 안의 점"),
+        cell("실측 vs 목표 · RMSE", d(A.targetRmse), "Oe"),
+        cell(`실측 vs 모델 · RMS`, d(A.rms), "Oe", `현재 I = ${fmt(g.I, 3)} A`),
+        cell("실측 vs 모델 · 평균 잔차", d(A.meanResid), "Oe", "실측 − 모델"),
+        cell("가운데 처짐 · 실측 최소", d(A.measSag), "Oe", has ? `x = ${fmt(A.measSagAt, 1)} mm` : ""),
+        cell("가운데 처짐 · 모델 최소", fmt(A.modelSag, 2), "Oe",
+          `x = ${fmt(A.modelSagAt, 1)} mm, 현재 I` + (has ? ` · 추정 I: ${fmt(A.modelSagEst, 2)}` : "")),
+      ].join("");
+      $("ab_iestbox").innerHTML = has
+        ? `<div class="ab-iest-row">
+             <div>
+               <div class="ab-k">전류 추정 &mdash; 모델을 실측에 가장 잘 맞추는 I = Σ(H<sub>model</sub>·H<sub>meas</sub>) / Σ(H<sub>model</sub>²), H<sub>model</sub>은 1 A 기준</div>
+               <div class="ab-v">I ≈ ${fmt(A.Iest, 3)} A <span>· 그때 RMS ${fmt(A.rmsEst, 2)} Oe</span></div>
+               <div class="ab-flag">역산한 추정값 — 측정한 전류 아님</div>
+             </div>
+             <button class="act ghost" type="button" id="ab_applyI">추정 I 적용</button>
+           </div>`
+        : `<p class="note" style="margin:0">측정 데이터를 불러오면 실측 지표와 전류 추정(역산값)이 표시됩니다.</p>`;
+    }
+
+    function abTableHtml(g, A) {
+      if (!abPoints.length) { $("ab_table").innerHTML = ""; return; }
+      const head = ["점", "x (mm)", "n", "평균 (Oe)", "표준편차", `모델 (I=${fmt(g.I, 3)})`, "잔차", "목표", "실측 직선이탈", "모델 직선이탈"];
+      const rows = abPoints.map((p, i) => [
+        "P" + p.order, fmt(p.x, 1), p.n, fmt(p.mean, 2), fmt(p.sd, 2), fmt(g.I * A.hu[i], 2), fmt(A.resid[i], 2),
+        fmt(g.h1 + (g.h2 - g.h1) * p.x / g.G, 2), fmt(A.measDev[i], 2), fmt(A.modelDev[i], 2),
+      ]);
+      $("ab_table").innerHTML = `<thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("") + "</tbody>";
+    }
+
+    function abDerivedHtml(g, M) {
+      const c = M.T1.counts, mx = Math.max(...c), mn = Math.min(...c);
+      const f1 = v => fmt(v, 1).replace("-", "−"), f2 = v => fmt(v, 2).replace("-", "−");
+      $("ab_dv1").innerHTML =
+        `턴 <b>${M.T1.N}</b> · 칸 폭 <b>${fmt(g.W1 / g.m1, 3)}</b> mm · 층수 <b>${mn}~${mx}</b><br>` +
+        `권선 x = <b>${f1(-(g.t + g.W1))} ~ ${f1(-g.t)}</b> mm · 두께 최대 <b>${f2(mx * g.p1)}</b> mm (가정)<br>` +
+        `<span class="ab-counts">칸별 층수 (바깥→코일2): ${c.join(" ")}</span>`;
+      const s = abCoil2Start(g), r2 = g.R2b + g.dw / 2, over = g.N2 * g.dw > g.W2 + 1e-9;
+      $("ab_dv2").innerHTML =
+        `턴 반경 <b>${f2(r2)}</b> mm · 권선 x = <b>${f1(g.G + g.t)} ~ ${f1(g.G + g.t + g.W2)}</b> mm<br>` +
+        (g.N2 > 0 ? `턴 중심 <b>${f2(s + g.dw / 2)} ~ ${f2(s + g.dw * (g.N2 - 0.5))}</b> mm` : "턴 없음") +
+        (over ? `<br><span class="bad">N2·dw = ${f2(g.N2 * g.dw)} mm 가 감기 폭 W2 보다 큼</span>` : "");
+    }
+
+    function abRender() {
+      if ($("tab-asbuilt").hidden) return;   // 탭이 보일 때만 계산
+      const g = abRead();
+      $("ab_p1v").textContent = g.p1.toFixed(2);
+      $("ab_rhov").textContent = g.rho;
+      const skew = g.layerMode === "skew";
+      ["ab_a", "ab_b"].forEach(id => $(id).disabled = !skew);
+      $("ab_side").querySelectorAll("button").forEach(b => b.disabled = !skew);
+
+      const M = abModel(g);
+      const A = abAnalyze(g, M, abPoints);
+      abLast = { g, A };
+      const x0 = -5, x1 = g.G + 5, NP = 241, xs = [], u1 = [], u2 = [];
+      for (let i = 0; i < NP; i++) {
+        const x = x0 + (x1 - x0) * i / (NP - 1), u = M.unit(x);
+        xs.push(x); u1.push(u.c1); u2.push(u.c2);
+      }
+      let cmp = null;
+      if ($("ab_cmp").checked) {
+        const side = g.thickSide === "outer" ? "바깥쪽 두꺼움" : "코일2쪽 두꺼움";
+        cmp = [
+          ["층 분포: 균일", { layerMode: "uniform" }],
+          [`층 분포: 쏠림 4→10 (${side})`, { layerMode: "skew", a: 4, b: 10 }],
+          [`층 분포: 쏠림 2→12 (${side})`, { layerMode: "skew", a: 2, b: 12 }],
+        ].map(([label, o]) => {
+          const m = abModel({ ...g, ...o });
+          return { label, ys: xs.map(x => g.I * m.unit(x).total) };
+        });
+      }
+      abDerivedHtml(g, M);
+      abDrawField(g, A, xs, u1, u2, cmp);
+      abDrawResid(g, A);
+      abDrawChord(g, M, A);
+      abMetricsHtml(g, A);
+      abTableHtml(g, A);
+    }
+
+    function abParseData() {
+      const note = $("ab_datanote");
+      try {
+        const r = abParseCSV($("ab_raw").value);
+        abPoints = r.points;
+        note.classList.remove("ab-err");
+        note.textContent = r.points.length
+          ? `${r.points.length}점 읽음 (${r.readingCols.join(", ")})` + (r.skipped ? ` · 숫자가 없어 건너뛴 행 ${r.skipped}개` : "")
+          : "데이터 없음 — 예시 버튼을 누르거나 CSV를 붙여넣으세요.";
+      } catch (e) {
+        abPoints = [];
+        note.classList.add("ab-err");
+        note.textContent = e.message;
+      }
+      abRender();
+    }
+
+    ["ab_R1b", "ab_W1", "ab_t", "ab_N1", "ab_m1", "ab_p1", "ab_a", "ab_b", "ab_R2b", "ab_W2", "ab_N2", "ab_dw",
+      "ab_G", "ab_I", "ab_dI", "ab_rho"].forEach(id => $(id).addEventListener("input", abRender));
+    ["ab_place", "ab_showparts", "ab_cmp"].forEach(id => $(id).addEventListener("change", abRender));
+    ["ab_mode", "ab_side", "ab_dir2"].forEach(id => $(id).addEventListener("click", ev => {
+      const b = ev.target.closest("button"); if (!b || b.disabled) return; abSetSeg(id, b.dataset.v); abRender();
+    }));
+    $("ab_raw").addEventListener("input", abParseData);
+    $("ab_example").addEventListener("click", () => { $("ab_raw").value = AB_EXAMPLE_0929; abParseData(); });
+    $("ab_clear").addEventListener("click", () => { $("ab_raw").value = ""; abParseData(); });
+    $("ab_load").addEventListener("click", () => $("ab_file").click());
+    $("ab_file").addEventListener("change", e => {
+      const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => { $("ab_raw").value = String(rd.result); abParseData(); };
+      rd.readAsText(f);
+    });
+    // 추정 I 는 버튼을 누를 때만 I 칸에 넣는다 (자동 적용하지 않음)
+    $("ab_iestbox").addEventListener("click", ev => {
+      if (!ev.target.closest("#ab_applyI") || !abLast || !isFinite(abLast.A.Iest)) return;
+      $("ab_I").value = abLast.A.Iest.toFixed(3); abRender();
+    });
+    $("ab_dl1").addEventListener("click", () => exportChartPng("ab_chart1", "ab_legend1", "asbuilt-field.png"));
+    $("ab_dl2").addEventListener("click", () => exportChartPng("ab_chart2", null, "asbuilt-residual.png"));
+    $("ab_dl3").addEventListener("click", () => exportChartPng("ab_chart3", "ab_legend3", "asbuilt-line-deviation.png"));
+    $("themebtn").addEventListener("click", abRender);
 
     /* ---- 시작 ---- */
     buildOptTable();
